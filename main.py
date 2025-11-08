@@ -198,7 +198,12 @@ class DatabaseManager:
             pipeline = [
                 {"$group": {"_id": "$moderation_action", "count": {"$sum": 1}}}
             ]
-            action_counts = list(self.db.messages.aggregate(pipeline))
+            action_counts = []
+            try:
+                action_counts = list(self.db.messages.aggregate(pipeline))
+            except Exception as e:
+                logger.warning(f"MongoDB aggregation failed: {e}")
+                action_counts = []
 
             feedback_count = self.db.feedback.count_documents({})
         else:
