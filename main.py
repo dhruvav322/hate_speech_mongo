@@ -208,8 +208,9 @@ class DatabaseManager:
 
             action_counts = {}
             for msg in memory_storage.messages.values():
-                action = msg.get("moderation_action", "allow")
-                action_counts[action] = action_counts.get(action, 0) + 1
+                action = msg.get("moderation_action", ModerationAction.ALLOW)
+                action_str = action.value if hasattr(action, 'value') else str(action)
+                action_counts[action_str] = action_counts.get(action_str, 0) + 1
 
             feedback_count = len(memory_storage.feedback)
 
