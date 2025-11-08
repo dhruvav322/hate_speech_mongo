@@ -77,7 +77,9 @@ class InMemoryStorage:
 memory_storage = InMemoryStorage()
 
 # Pydantic Models
-class ModerationAction(str):
+from enum import Enum
+
+class ModerationAction(str, Enum):
     ALLOW = "allow"
     FLAG = "flag"
     BLOCK = "block"
