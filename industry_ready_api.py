@@ -454,6 +454,6 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=port,
-        reload=(settings.ENVIRONMENT == "development"),
+        reload=False,
         log_level=settings.LOG_LEVEL.lower()
     )
