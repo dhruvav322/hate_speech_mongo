@@ -8,6 +8,25 @@ echo "🛡️ Setting up Industry-Ready Hate Speech API for VS Code..."
 # Create .vscode directory if it doesn't exist
 mkdir -p .vscode
 
+# Create settings.json for Python configuration
+cat > .vscode/settings.json << 'EOF'
+{
+    "python.defaultInterpreterPath": "python3",
+    "python.terminal.activateEnvironment": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": true,
+    "python.formatting.provider": "black",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.typeCheckingMode": "basic",
+    "files.associations": {
+        "*.py": "python"
+    }
+}
+EOF
+
+echo "✅ Created .vscode/settings.json"
+
 # Create launch.json for debugging
 cat > .vscode/launch.json << 'EOF'
 {
