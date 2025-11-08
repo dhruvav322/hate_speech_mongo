@@ -171,7 +171,7 @@ class DatabaseManager:
 
     async def get_user(self, user_id: str) -> Optional[Dict]:
         """Get user profile."""
-        if self.connected and self.db:
+        if self.connected and self.db is not None:
             return self.db.users.find_one({"user_id": user_id})
         return memory_storage.users.get(user_id)
 
