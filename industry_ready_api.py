@@ -451,7 +451,7 @@ if __name__ == "__main__":
     logger.info(f"📖 Docs: http://localhost:{port}/docs")
 
     uvicorn.run(
-        "app:app",
+        app,
         host="0.0.0.0",
         port=port,
         reload=(settings.ENVIRONMENT == "development"),
