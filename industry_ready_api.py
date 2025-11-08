@@ -61,7 +61,7 @@ class Settings:
 settings = Settings()
 
 # Data Models
-class ModerationAction(str):
+class ModerationAction(str, Enum):
     ALLOW = "allow"
     FLAG = "flag"
     BLOCK = "block"
