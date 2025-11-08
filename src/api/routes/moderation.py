@@ -317,6 +317,9 @@ async def get_models_status(db=Depends(get_database)):
 async def update_user_behavior_async(user_id: str, response: ModerationResponse):
     """Update user behavior statistics in background."""
     try:
+        from src.services.user_service import user_service
+        from src.models.user import UserBehaviorUpdate
+
         behavior_update = UserBehaviorUpdate(
             message_toxicity_score=response.overall_score,
             moderation_action_taken=response.moderation_action.action.value,
@@ -332,7 +335,7 @@ async def update_user_behavior_async(user_id: str, response: ModerationResponse)
 async def store_message_async(request: ModerationRequest, response: ModerationResponse):
     """Store message and analysis results in background."""
     try:
-        from src.config.database import COLLECTIONS
+        from src.config.database import db_manager, COLLECTIONS
 
         # Create message document
         message_doc = {
