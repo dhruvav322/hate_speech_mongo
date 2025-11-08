@@ -62,11 +62,15 @@ config = Config()
 # In-memory storage for fallback
 @dataclass
 class InMemoryStorage:
-    users: Dict[str, Dict] = {}
-    messages: Dict[str, Dict] =
+    users: Dict[str, Dict] = None
+    messages: Dict[str, Dict] = None
     feedback: List[Dict] = None
 
     def __post_init__(self):
+        if self.users is None:
+            self.users = {}
+        if self.messages is None:
+            self.messages = {}
         if self.feedback is None:
             self.feedback = []
 
