@@ -8,16 +8,14 @@ pymongo==4.6.0
 motor==3.3.2
 
 # Machine Learning
-<<<<<<< HEAD
-detoxify==0.5.2
-=======
 detoxify==1.2.0
->>>>>>> compyle/hate-speech-mitigation-agent
 sentence-transformers==2.2.2
 torch==2.1.0
 transformers==4.35.0
 numpy==1.24.3
 scikit-learn==1.3.0
+datasets==2.14.6
+accelerate==0.24.1
 
 # Data Processing
 pydantic==2.5.0
