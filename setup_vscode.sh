@@ -19,11 +19,14 @@ cat > .vscode/launch.json << 'EOF'
             "request": "launch",
             "program": "${workspaceFolder}/industry_ready_api.py",
             "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
             "env": {
                 "API_KEY": "industry-demo-key-12345",
                 "ENVIRONMENT": "development",
-                "LOG_LEVEL": "INFO"
-            }
+                "LOG_LEVEL": "INFO",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "python": "${command:python.interpreterPath}"
         }
     ]
 }
