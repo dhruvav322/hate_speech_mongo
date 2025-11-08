@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Security, BackgroundTasks, Depends
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
+from enum import Enum
 import uvicorn
 
 # Configure logging
