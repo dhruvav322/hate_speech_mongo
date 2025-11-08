@@ -84,7 +84,7 @@ class ModerationAction(str):
 
 class UserProfile(BaseModel):
     user_id: str = Field(..., description="Unique user identifier")
-    email: Optional[EmailStr] = Field(None, description="User email (optional)")
+    email: Optional[str] = Field(None, description="User email (optional)")
     trust_score: float = Field(0.5, ge=0.0, le=1.0, description="User trust score")
     created_at: datetime = Field(default_factory=datetime.now)
     last_active: datetime = Field(default_factory=datetime.now)
