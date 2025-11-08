@@ -1,4 +1,8 @@
 version: '3.8'
+<<<<<<< HEAD
+=======
+
+>>>>>>> compyle/hate-speech-mitigation-agent
 services:
   app:
     build: .
@@ -6,21 +10,96 @@ services:
       - "8000:8000"
     environment:
       - MONGODB_URL=mongodb://mongo:27017
+<<<<<<< HEAD
       - MONGODB_DB_NAME=hate_speech_mitigation
+=======
+      - REDIS_URL=redis://redis:6379
+>>>>>>> compyle/hate-speech-mitigation-agent
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - LOG_LEVEL=INFO
     depends_on:
       - mongo
+<<<<<<< HEAD
     restart: unless-stopped
+=======
+      - redis
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
+    networks:
+      - hate-speech-network
+
+>>>>>>> compyle/hate-speech-mitigation-agent
   mongo:
     image: mongo:7.0
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+<<<<<<< HEAD
     environment:
       - MONGO_INITDB_DATABASE=hate_speech_mitigation
     restart: unless-stopped
 volumes:
   mongo_data:
+=======
+      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    environment:
+      - MONGO_INITDB_DATABASE=hate_speech_mitigation
+    restart: unless-stopped
+    networks:
+      - hate-speech-network
+
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - hate-speech-network
+
+  prometheus:
+    image: prom/prometheus:v2.40.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - hate-speech-network
+
+  grafana:
+    image: grafana/grafana:9.3.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    restart: unless-stopped
+    networks:
+      - hate-speech-network
+
+volumes:
+  mongo_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  hate-speech-network:
+    driver: bridge
+>>>>>>> compyle/hate-speech-mitigation-agent

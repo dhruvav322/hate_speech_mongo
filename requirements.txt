@@ -8,7 +8,11 @@ pymongo==4.6.0
 motor==3.3.2
 
 # Machine Learning
+<<<<<<< HEAD
 detoxify==0.5.2
+=======
+detoxify==1.2.0
+>>>>>>> compyle/hate-speech-mitigation-agent
 sentence-transformers==2.2.2
 torch==2.1.0
 transformers==4.35.0
@@ -31,4 +35,8 @@ httpx==0.25.2
 aiofiles==23.2.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+<<<<<<< HEAD
 psutil==5.9.6
+=======
+psutil==5.9.6
+>>>>>>> compyle/hate-speech-mitigation-agent
