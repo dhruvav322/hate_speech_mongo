@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Complete Industry-Ready Hate Speech Moderation API
-All features integrated in a single file for reliable deployment
+Enhanced Industry-Ready Hate Speech Moderation API
+Advanced ML models with ensemble predictions and real-time monitoring
 """
 
 import os
@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request, s
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 import uvicorn
 
 # MongoDB
@@ -32,13 +32,14 @@ except ImportError:
     MONGODB_AVAILABLE = False
     print("Warning: MongoDB not available, using in-memory storage")
 
-# ML Model
+# Import advanced ML models
 try:
-    from detoxify import Detoxify
-    ML_MODEL_AVAILABLE = True
+    from advanced_ml_models import advanced_models, EnsembleResult
+    ADVANCED_MODELS_AVAILABLE = True
+    print("Advanced ML models available")
 except ImportError:
-    ML_MODEL_AVAILABLE = False
-    print("Warning: Detoxify not available, using mock predictions")
+    ADVANCED_MODELS_AVAILABLE = False
+    print("Warning: Advanced ML models not available, using fallback")
 
 # Configure logging
 logging.basicConfig(
@@ -55,7 +56,8 @@ class Config:
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     BACKGROUND_PROCESSING = os.getenv("BACKGROUND_PROCESSING", "true").lower() == "true"
     MAX_REQUESTS_PER_MINUTE = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "60"))
-    MODEL_NAME = os.getenv("MODEL_NAME", "multilingual")
+    MODEL_NAME = os.getenv("MODEL_NAME", "ensemble")
+    USE_ADVANCED_MODELS = os.getenv("USE_ADVANCED_MODELS", "true").lower() == "true"
 
 config = Config()
 
@@ -119,6 +121,17 @@ class AnalyticsResponse(BaseModel):
     model_accuracy: Optional[float] = None
     feedback_count: int
     uptime_hours: float
+
+class ModelPerformanceResponse(BaseModel):
+    models_loaded: int
+    total_predictions: int
+    average_prediction_time_ms: float
+    uptime_hours: float
+    cache_hit_rate_percent: float
+    cache_size: int
+    model_usage: Dict[str, int]
+    available_models: List[str]
+    ml_libraries_available: bool
 
 # Security
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=True)
@@ -236,65 +249,95 @@ class DatabaseManager:
             "feedback_count": feedback_count
         }
 
-# ML Model Handler
+# Enhanced ML Model Handler
 class ToxicityModel:
     def __init__(self):
-        self.model = None
-        self.model_loaded = False
         self.start_time = time.time()
+        self.using_advanced_models = ADVANCED_MODELS_AVAILABLE and config.USE_ADVANCED_MODELS
 
     async def load_model(self):
-        """Load the ML model."""
-        if ML_MODEL_AVAILABLE:
+        """Load the ML model(s)."""
+        if self.using_advanced_models:
             try:
-                self.model = Detoxify(config.MODEL_NAME)
-                self.model_loaded = True
-                logger.info(f"Loaded Detoxify model: {config.MODEL_NAME}")
+                await advanced_models.load_all_models()
+                logger.info("Loaded advanced ML models ensemble")
             except Exception as e:
-                logger.error(f"Failed to load model: {e}")
-                self.model_loaded = False
+                logger.error(f"Failed to load advanced models: {e}")
+                self.using_advanced_models = False
         else:
-            logger.info("Using mock toxicity predictions")
+            logger.info("Advanced models disabled or not available, using fallback predictions")
 
     async def predict_toxicity(self, text: str) -> Dict[str, float]:
-        """Predict toxicity scores."""
+        """Predict toxicity scores using advanced models or fallback."""
         start_time = time.time()
 
-        if self.model_loaded and self.model:
+        if self.using_advanced_models:
             try:
-                # Use actual model
-                results = self.model.predict(text)
+                # Use advanced ensemble prediction
+                result = await advanced_models.predict_toxicity_ensemble(text)
+
                 # Convert to standard format
-                toxicity_scores = {
-                    'toxicity': results.get('toxicity', 0.0),
-                    'severe_toxicity': results.get('severe_toxicity', 0.0),
-                    'obscene': results.get('obscene', 0.0),
-                    'identity_attack': results.get('identity_attack', 0.0),
-                    'insult': results.get('insult', 0.0),
-                    'threat': results.get('threat', 0.0)
+                toxicity_scores = {}
+                for pred in result.individual_predictions:
+                    for category, score in pred.raw_scores.items():
+                        if isinstance(score, (int, float)):
+                            toxicity_scores[category] = score
+
+                # Ensure we have standard toxicity categories
+                standard_categories = ['toxicity', 'severe_toxicity', 'obscene', 'identity_attack', 'insult', 'threat']
+                for cat in standard_categories:
+                    if cat not in toxicity_scores:
+                        toxicity_scores[cat] = result.final_score
+
+                processing_time = (time.time() - start_time) * 1000
+
+                return {
+                    'toxicity_scores': toxicity_scores,
+                    'overall_score': result.final_score,
+                    'processing_time_ms': processing_time,
+                    'ensemble_info': {
+                        'model_count': result.model_count,
+                        'confidence': result.confidence,
+                        'consensus': result.consensus,
+                        'individual_models': [p.model_name for p in result.individual_predictions]
+                    }
                 }
-                overall_score = max(toxicity_scores.values())
             except Exception as e:
-                logger.error(f"Model prediction failed: {e}")
-                toxicity_scores = {'toxicity': 0.0}
-                overall_score = 0.0
-        else:
-            # Mock predictions based on simple keyword detection
-            toxic_keywords = ['hate', 'stupid', 'ugly', 'kill', 'die', 'idiot']
-            text_lower = text.lower()
-            toxicity_scores = {}
+                logger.error(f"Advanced prediction failed: {e}")
+                # Fall back to simple prediction
 
-            for category in ['toxicity', 'severe_toxicity', 'obscene', 'identity_attack', 'insult', 'threat']:
-                score = 0.0
-                if category in ['toxicity', 'insult'] and any(word in text_lower for word in toxic_keywords):
-                    score = 0.7
-                elif 'severe' in category and any(word in text_lower for word in ['kill', 'die']):
-                    score = 0.9
-                toxicity_scores[category] = score
+        # Fallback predictions
+        return await self._fallback_prediction(text, start_time)
 
-            overall_score = max(toxicity_scores.values())
+    async def _fallback_prediction(self, text: str, start_time: float) -> Dict[str, float]:
+        """Fallback prediction when advanced models fail."""
+        toxic_keywords = ['hate', 'stupid', 'ugly', 'kill', 'die', 'idiot', 'moron', 'fool']
+        severe_keywords = ['kill', 'die', 'murder', 'violence', 'harm']
+        text_lower = text.lower()
 
+        toxicity_scores = {}
+
+        for category in ['toxicity', 'severe_toxicity', 'obscene', 'identity_attack', 'insult', 'threat']:
+            score = 0.0
+
+            if category == 'toxicity' and any(word in text_lower for word in toxic_keywords):
+                score = 0.7
+            elif category == 'severe_toxicity' and any(word in text_lower for word in severe_keywords):
+                score = 0.9
+            elif category == 'insult' and any(word in text_lower for word in ['stupid', 'idiot', 'moron', 'fool']):
+                score = 0.6
+            elif category == 'threat' and any(word in text_lower for word in ['kill', 'hurt', 'harm', 'die']):
+                score = 0.8
+            elif category == 'identity_attack' and any(word in text_lower for word in ['race', 'gender', 'religion']):
+                score = 0.5
+            elif category == 'obscene' and any(word in text_lower for word in ['ugly', 'disgusting']):
+                score = 0.4
+
+            toxicity_scores[category] = score
+
+        overall_score = max(toxicity_scores.values())
         processing_time = (time.time() - start_time) * 1000
+
         return {
             'toxicity_scores': toxicity_scores,
             'overall_score': overall_score,
@@ -303,9 +346,9 @@ class ToxicityModel:
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Industry-Ready Hate Speech Moderation API",
-    description="Production-grade hate speech moderation with ML feedback loop",
-    version="1.0.0",
+    title="Enhanced Industry-Ready Hate Speech Moderation API",
+    description="Production-grade hate speech moderation with advanced ML ensemble and feedback loop",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -342,25 +385,29 @@ async def process_analysis_background(message_id: str, text: str, user_id: str):
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application."""
-    logger.info("Starting Industry-Ready Hate Speech Moderation API")
+    logger.info("Starting Enhanced Industry-Ready Hate Speech Moderation API")
     await db_manager.connect()
     await toxicity_model.load_model()
     logger.info("API initialization complete")
 
 @app.get("/", status_code=200)
 async def root():
-    """Health check endpoint."""
+    """Health check endpoint with enhanced features."""
+    features = {
+        "api_key_auth": True,
+        "background_processing": config.BACKGROUND_PROCESSING,
+        "mongodb_connected": db_manager.connected,
+        "advanced_ml_models": toxicity_model.using_advanced_models,
+        "mlops_feedback": True,
+        "ensemble_predictions": ADVANCED_MODELS_AVAILABLE and config.USE_ADVANCED_MODELS,
+        "real_time_monitoring": True
+    }
+
     return {
         "status": "operational",
-        "service": "hate-speech-moderation",
-        "version": "1.0.0",
-        "features": {
-            "api_key_auth": True,
-            "background_processing": config.BACKGROUND_PROCESSING,
-            "mongodb_connected": db_manager.connected,
-            "ml_model_loaded": toxicity_model.model_loaded,
-            "mlops_feedback": True
-        },
+        "service": "enhanced-hate-speech-moderation",
+        "version": "2.0.0",
+        "features": features,
         "uptime_seconds": int(time.time() - toxicity_model.start_time)
     }
 
@@ -370,7 +417,7 @@ async def analyze_message(
     background_tasks: BackgroundTasks,
     api_key: str = Depends(get_api_key)
 ):
-    """Analyze message for hate speech."""
+    """Analyze message for hate speech using advanced ML ensemble."""
     start_time = time.time()
 
     try:
@@ -395,7 +442,7 @@ async def analyze_message(
             }
             user = await db_manager.create_user(user_data)
 
-        # Analyze toxicity
+        # Analyze toxicity with advanced models
         prediction = await toxicity_model.predict_toxicity(text)
         toxicity_score = prediction['overall_score']
         toxicity_scores = prediction['toxicity_scores']
@@ -421,7 +468,7 @@ async def analyze_message(
             "toxicity_score": toxicity_score,
             "moderation_action": moderation_action,
             "processing_time_ms": processing_time,
-            "model_version": config.MODEL_NAME
+            "model_version": "ensemble_v2" if toxicity_model.using_advanced_models else "fallback_v1"
         }
 
         # Store message
@@ -433,7 +480,8 @@ async def analyze_message(
 
         logger.info(f"Analyzed message {message_id}: score={toxicity_score:.3f}, action={moderation_action}")
 
-        return {
+        # Enhanced response with model information
+        response = {
             "success": True,
             "message_id": message_id,
             "moderation_action": {
@@ -448,8 +496,18 @@ async def analyze_message(
             "user": {
                 "user_id": user_id,
                 "trust_score": user.get("trust_score", 0.5)
+            },
+            "model_info": {
+                "model_type": "ensemble" if toxicity_model.using_advanced_models else "fallback",
+                "advanced_ml": toxicity_model.using_advanced_models
             }
         }
+
+        # Add ensemble information if available
+        if 'ensemble_info' in prediction:
+            response["ensemble_info"] = prediction['ensemble_info']
+
+        return response
 
     except HTTPException:
         raise
@@ -517,15 +575,38 @@ async def get_analytics(api_key: str = Depends(get_api_key)):
         logger.error(f"Analytics failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.get("/api/v1/model-performance", response_model=ModelPerformanceResponse)
+async def get_model_performance(api_key: str = Depends(get_api_key)):
+    """Get detailed ML model performance statistics."""
+    try:
+        if ADVANCED_MODELS_AVAILABLE and config.USE_ADVANCED_MODELS:
+            stats = advanced_models.get_performance_stats()
+            return ModelPerformanceResponse(**stats)
+        else:
+            return ModelPerformanceResponse(
+                models_loaded=0,
+                total_predictions=0,
+                average_prediction_time_ms=0.0,
+                uptime_hours=(time.time() - toxicity_model.start_time) / 3600,
+                cache_hit_rate_percent=0.0,
+                cache_size=0,
+                model_usage={},
+                available_models=[],
+                ml_libraries_available=False
+            )
+    except Exception as e:
+        logger.error(f"Model performance stats failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @app.get("/api/v1/health")
 async def health_check():
-    """Detailed health check."""
+    """Detailed health check with ML model status."""
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "services": {
             "database": "connected" if db_manager.connected else "in-memory",
-            "ml_model": "loaded" if toxicity_model.model_loaded else "mock",
+            "ml_models": "advanced_ensemble" if toxicity_model.using_advanced_models else "fallback",
             "auth": "operational"
         },
         "metrics": {
@@ -553,7 +634,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Run directly
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app",
+        "main_enhanced:app",
         host="0.0.0.0",
         port=8000,
         reload=config.ENVIRONMENT == "development",
