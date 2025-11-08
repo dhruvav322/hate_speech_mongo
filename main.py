@@ -177,7 +177,7 @@ class DatabaseManager:
 
     async def create_user(self, user_data: Dict) -> Dict:
         """Create user profile."""
-        if self.connected and self.db:
+        if self.connected and self.db is not None:
             result = self.db.users.insert_one(user_data)
             user_data["_id"] = str(result.inserted_id)
             return user_data
@@ -186,7 +186,7 @@ class DatabaseManager:
 
     async def store_message(self, message_data: Dict) -> Dict:
         """Store message analysis."""
-        if self.connected and self.db:
+        if self.connected and self.db is not None:
             result = self.db.messages.insert_one(message_data)
             message_data["_id"] = str(result.inserted_id)
             return message_data
@@ -195,7 +195,7 @@ class DatabaseManager:
 
     async def store_feedback(self, feedback_data: Dict) -> Dict:
         """Store feedback."""
-        if self.connected and self.db:
+        if self.connected and self.db is not None:
             result = self.db.feedback.insert_one(feedback_data)
             feedback_data["_id"] = str(result.inserted_id)
             return feedback_data
@@ -204,7 +204,7 @@ class DatabaseManager:
 
     async def get_analytics(self) -> Dict:
         """Get analytics data."""
-        if self.connected and self.db:
+        if self.connected and self.db is not None:
             total_messages = self.db.messages.count_documents({})
             toxic_messages = self.db.messages.count_documents({"toxicity_score": {"$gt": 0.5}})
 
