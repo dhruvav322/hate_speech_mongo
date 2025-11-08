@@ -37,8 +37,22 @@ docker run -p 8000:8000 -e API_KEY=your-production-key hate-speech-api
 
 ### Step 4: Update Your VS Code Configuration
 
-#### 1. Update launch.json (for debugging)
-Create/update `.vscode/launch.json`:
+#### 1. Update VS Code Configuration (for debugging)
+The setup script automatically creates:
+
+**`.vscode/settings.json`** (Fixes Python interpreter issues):
+```json
+{
+    "python.defaultInterpreterPath": "python3",
+    "python.terminal.activateEnvironment": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": true,
+    "python.formatting.provider": "black"
+}
+```
+
+**`.vscode/launch.json`** (Debugging configuration):
 ```json
 {
     "version": "0.2.0",
@@ -49,15 +63,23 @@ Create/update `.vscode/launch.json`:
             "request": "launch",
             "program": "${workspaceFolder}/industry_ready_api.py",
             "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
             "env": {
                 "API_KEY": "industry-demo-key-12345",
                 "ENVIRONMENT": "development",
-                "LOG_LEVEL": "INFO"
-            }
+                "LOG_LEVEL": "INFO",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "python": "${command:python.interpreterPath}"
         }
     ]
 }
 ```
+
+**🔧 If you get "Configured debug type 'python' is not supported" error:**
+1. Install Python extension in VS Code: `Ctrl+Shift+X` → Search "Python" → Install by Microsoft
+2. Reload VS Code: `Ctrl+Shift+P` → "Developer: Reload Window"
+3. Try debugging again with F5
 
 #### 2. Update tasks.json (for running tasks)
 Create/update `.vscode/tasks.json`:
