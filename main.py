@@ -261,6 +261,13 @@ class ToxicityModel:
             try:
                 await advanced_models.load_all_models()
                 logger.info("Loaded advanced ML models ensemble")
+                # Disable advanced mode if no models actually loaded
+                try:
+                    if not getattr(advanced_models, "models", {}):
+                        logger.warning("Advanced models not loaded; falling back to simple predictions")
+                        self.using_advanced_models = False
+                except Exception as e:
+                    logger.warning(f"Advanced models status check failed: {e}")
             except Exception as e:
                 logger.error(f"Failed to load advanced models: {e}")
                 self.using_advanced_models = False
@@ -311,8 +318,12 @@ class ToxicityModel:
 
     async def _fallback_prediction(self, text: str, start_time: float) -> Dict[str, float]:
         """Fallback prediction when advanced models fail."""
-        toxic_keywords = ['hate', 'stupid', 'ugly', 'kill', 'die', 'idiot', 'moron', 'fool']
-        severe_keywords = ['kill', 'die', 'murder', 'violence', 'harm']
+        toxic_keywords = [
+            'hate', 'stupid', 'ugly', 'idiot', 'moron', 'fool',
+            'bitch', 'asshole', 'dumb', 'trash', 'disgusting', 'loser'
+        ]
+        severe_keywords = ['kill', 'die', 'murder', 'violence', 'harm', 'hurt']
+        obscene_keywords = ['bitch', 'ass', 'asshole', 'shit', 'fuck']
         text_lower = text.lower()
 
         toxicity_scores = {}
@@ -320,17 +331,17 @@ class ToxicityModel:
         for category in ['toxicity', 'severe_toxicity', 'obscene', 'identity_attack', 'insult', 'threat']:
             score = 0.0
 
-            if category == 'toxicity' and any(word in text_lower for word in toxic_keywords):
+            if category == 'toxicity' and any(word in text_lower for word in toxic_keywords + severe_keywords + obscene_keywords):
                 score = 0.7
             elif category == 'severe_toxicity' and any(word in text_lower for word in severe_keywords):
                 score = 0.9
-            elif category == 'insult' and any(word in text_lower for word in ['stupid', 'idiot', 'moron', 'fool']):
+            elif category == 'insult' and any(word in text_lower for word in ['stupid', 'idiot', 'moron', 'fool', 'bitch', 'loser', 'dumb']):
                 score = 0.6
             elif category == 'threat' and any(word in text_lower for word in ['kill', 'hurt', 'harm', 'die']):
                 score = 0.8
             elif category == 'identity_attack' and any(word in text_lower for word in ['race', 'gender', 'religion']):
                 score = 0.5
-            elif category == 'obscene' and any(word in text_lower for word in ['ugly', 'disgusting']):
+            elif category == 'obscene' and any(word in text_lower for word in obscene_keywords):
                 score = 0.4
 
             toxicity_scores[category] = score

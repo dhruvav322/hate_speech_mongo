@@ -14,19 +14,48 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 
-# ML Imports
+# ML Imports (guarded and per-library availability flags)
+DETOXIFY_AVAILABLE = False
+HF_AVAILABLE = False
+SENTENCE_AVAILABLE = False
+
+# Torch is optional baseline dep for some libs; guard it
 try:
-    import torch
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+    import torch  # noqa: F401
+except BaseException:
+    pass
+
+# Detoxify
+try:
     from detoxify import Detoxify
+    DETOXIFY_AVAILABLE = True
+except BaseException as e:
+    logging.warning(f"Detoxify not available: {e}")
+
+# Sentence Transformers
+try:
     from sentence_transformers import SentenceTransformer
-    import sklearn
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.linear_model import LogisticRegression
-    ML_AVAILABLE = True
-except ImportError as e:
-    ML_AVAILABLE = False
-    logging.warning(f"ML libraries not available: {e}")
+    SENTENCE_AVAILABLE = True
+except BaseException as e:
+    logging.warning(f"Sentence-Transformers not available: {e}")
+
+# Hugging Face Transformers (optional)
+try:
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+    HF_AVAILABLE = True
+except BaseException as e:
+    logging.warning(f"Transformers not available: {e}")
+
+# Classical ML (optional, not required for runtime)
+try:
+    import sklearn  # noqa: F401
+    from sklearn.feature_extraction.text import TfidfVectorizer  # noqa: F401
+    from sklearn.linear_model import LogisticRegression  # noqa: F401
+except BaseException:
+    pass
+
+# Overall availability if at least one modern model exists
+ML_AVAILABLE = DETOXIFY_AVAILABLE or SENTENCE_AVAILABLE or HF_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +100,17 @@ class AdvancedToxicityModels:
 
         logger.info("Loading advanced ML models...")
 
-        # Load Detoxify models
-        await self._load_detoxify_models()
+        # Load Detoxify models (if available)
+        if DETOXIFY_AVAILABLE:
+            await self._load_detoxify_models()
 
-        # Load Hugging Face models
-        await self._load_huggingface_models()
+        # Load Hugging Face models (optional)
+        if HF_AVAILABLE:
+            await self._load_huggingface_models()
 
-        # Load sentence embeddings model
-        await self._load_sentence_transformer()
+        # Load sentence embeddings model (if available)
+        if SENTENCE_AVAILABLE:
+            await self._load_sentence_transformer()
 
         # Initialize rule-based model as fallback
         self._load_rule_based_model()
@@ -204,7 +236,7 @@ class AdvancedToxicityModels:
 
         # Detoxify predictions
         for name, model_info in self.models.items():
-            if model_info["type"] == "detoxify":
+            if model_info.get("type") == "detoxify":
                 try:
                     pred = await self._predict_detoxify(name, text, model_info)
                     if pred:
@@ -214,7 +246,7 @@ class AdvancedToxicityModels:
 
         # HuggingFace predictions
         for name, model_info in self.models.items():
-            if model_info["type"] == "huggingface":
+            if model_info.get("type") == "huggingface":
                 try:
                     pred = await self._predict_huggingface(name, text, model_info)
                     if pred:
@@ -459,16 +491,42 @@ class AdvancedToxicityModels:
 
     def _fallback_prediction(self, text: str) -> EnsembleResult:
         """Fallback prediction when no models are available"""
-        # Simple keyword-based fallback
-        toxic_keywords = ['hate', 'stupid', 'ugly', 'kill', 'die', 'idiot']
-        toxicity_score = 0.7 if any(word in text.lower() for word in toxic_keywords) else 0.0
+        # Simple keyword-based fallback with broader coverage
+        text_l = text.lower()
+        toxic_keywords = ['hate', 'stupid', 'ugly', 'idiot', 'moron', 'fool', 'dumb', 'loser']
+        severe_keywords = ['kill', 'die', 'murder', 'violence', 'harm', 'hurt']
+        obscene_keywords = ['bitch', 'ass', 'asshole', 'shit', 'fuck']
+
+        # Category-specific heuristics
+        categories = {
+            'toxicity': 0.0,
+            'severe_toxicity': 0.0,
+            'obscene': 0.0,
+            'identity_attack': 0.0,
+            'insult': 0.0,
+            'threat': 0.0,
+        }
+
+        if any(w in text_l for w in toxic_keywords + obscene_keywords + severe_keywords):
+            categories['toxicity'] = 0.7
+        if any(w in text_l for w in severe_keywords):
+            categories['severe_toxicity'] = 0.9
+        if any(w in text_l for w in ['stupid', 'idiot', 'moron', 'fool', 'bitch', 'loser', 'dumb']):
+            categories['insult'] = max(categories['insult'], 0.6)
+        if any(w in text_l for w in ['kill', 'hurt', 'harm', 'die']):
+            categories['threat'] = max(categories['threat'], 0.8)
+        if any(w in text_l for w in obscene_keywords):
+            categories['obscene'] = max(categories['obscene'], 0.5)
+
+        # Overall is the max across categories
+        toxicity_score = max(categories.values())
 
         fallback_pred = ModelPrediction(
             model_name="fallback",
             toxicity_score=toxicity_score,
-            confidence=0.5,
+            confidence=max(0.1, 1.0 - toxicity_score),
             prediction_time_ms=1.0,
-            raw_scores={"fallback": toxicity_score},
+            raw_scores=categories,
             model_type="fallback",
             version="1.0"
         )

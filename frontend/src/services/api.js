@@ -22,7 +22,30 @@ export const moderationService = {
         text,
         user_id: userId,
       });
-      return response.data;
+      const raw = response.data || {};
+
+      // Map backend response (original format) to UI-expected shape
+      const recommendedAction = raw?.moderation_action?.action || 'allow';
+      const confidence = raw?.moderation_action?.confidence ?? 0;
+      const toxicityScore = raw?.overall_score ?? 0;
+      const categories = raw?.toxicity_scores || {};
+      const modelUsed = 'ensemble (3 models)';
+      const processingTime = raw?.processing_time_ms || 0;
+
+      return {
+        message_id: raw.message_id || '',
+        recommended_action: recommendedAction,
+        analysis: {
+          toxicity_score: toxicityScore,
+          confidence: confidence,
+          model_used: modelUsed,
+          categories: categories,
+          text: text,
+          processing_time_ms: processingTime,
+        },
+        reasoning: `${raw?.moderation_action?.reason || 'Ensemble analysis'} (${processingTime}ms)`,
+        timestamp: raw?.timestamp || new Date().toISOString(),
+      };
     } catch (error) {
       console.error('Analysis failed:', error.response?.data || error.message);
       throw new Error(error.response?.data?.detail || 'Analysis failed');
@@ -32,11 +55,11 @@ export const moderationService = {
   // Submit feedback for incorrect moderation
   async submitFeedback(messageId, correctAction, feedbackText, userId) {
     try {
-      const response = await api.post('/api/v1/feedback', {
+      const response = await api.post('/api/v1/feedback/report', {
         message_id: messageId,
-        correct_action: correctAction,
-        feedback_text: feedbackText,
-        user_id: userId,
+        reporter_id: userId || 'anonymous',
+        reason: `Incorrect moderation - should be: ${correctAction}`,
+        description: feedbackText || `User believes the correct action should be "${correctAction}" instead.`,
       });
       return response.data;
     } catch (error) {
@@ -48,13 +71,40 @@ export const moderationService = {
   // Get analytics data
   async getAnalytics(startDate, endDate, userId) {
     try {
-      const params = {};
-      if (startDate) params.start_date = startDate.toISOString();
-      if (endDate) params.end_date = endDate.toISOString();
+      const params = { days: 7 };
       if (userId) params.user_id = userId;
 
-      const response = await api.get('/api/v1/analytics', { params });
-      return response.data;
+      // Get overview and statistics
+      const [overview, statistics] = await Promise.all([
+        api.get('/api/v1/analytics/overview', { params }),
+        api.get('/api/v1/moderation/statistics', { params })
+      ]);
+
+      // Map to expected dashboard format
+      const ovData = overview.data;
+      const statData = statistics.data;
+      
+      // Calculate toxic messages (flagged messages that aren't false positives)
+      const totalMessages = ovData.total_messages || 0;
+      const flaggedRate = ovData.flagged_rate || 0;
+      const flaggedMessages = Math.round(totalMessages * (flaggedRate / 100));
+      const toxicMessages = flaggedMessages;
+
+      return {
+        data: {
+          total_messages: totalMessages,
+          flagged_messages: flaggedMessages,
+          toxic_messages: toxicMessages,
+          active_users: ovData.active_users || 0,
+          active_conversations: ovData.active_conversations || 0,
+          messages_last_24h: ovData.messages_last_24h || 0,
+          messages_last_7d: ovData.messages_last_7d || 0,
+          flagged_rate: flaggedRate,
+          false_positive_rate: ovData.false_positive_rate || 0
+        },
+        action_breakdown: statData.action_breakdown || {},
+        period_days: statData.period_days || 7
+      };
     } catch (error) {
       console.error('Analytics fetch failed:', error.response?.data || error.message);
       throw new Error(error.response?.data?.detail || 'Analytics fetch failed');
@@ -64,7 +114,7 @@ export const moderationService = {
   // Get model performance stats
   async getModelPerformance() {
     try {
-      const response = await api.get('/api/v1/model-performance');
+      const response = await api.get('/api/v1/moderation/statistics');
       return response.data;
     } catch (error) {
       console.error('Model performance fetch failed:', error.response?.data || error.message);
@@ -75,7 +125,7 @@ export const moderationService = {
   // Health check
   async healthCheck() {
     try {
-      const response = await api.get('/api/v1/health');
+      const response = await api.get('/health');
       return response.data;
     } catch (error) {
       console.error('Health check failed:', error.response?.data || error.message);

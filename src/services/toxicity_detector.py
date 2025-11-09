@@ -22,24 +22,46 @@ from src.models.message import ToxicityAnalysis, ToxicityPredictions
 class ToxicityDetector:
     """Service for detecting toxicity in text using Detoxify models."""
 
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, model_name: Optional[str] = None, use_ensemble: bool = True):
         """
         Initialize the toxicity detector.
 
         Args:
             model_name: Name of the Detoxify model to use
+            use_ensemble: Whether to use multiple models in ensemble mode
         """
         self.model_name = model_name or settings.detoxify_model
+        self.use_ensemble = use_ensemble
         self.model = None
+        self.models = {}  # For ensemble mode
         self._model_loaded = False
 
     def _load_model(self) -> None:
-        """Load the Detoxify model if not already loaded."""
+        """Load the Detoxify model(s) if not already loaded."""
         if not DETOXIFY_AVAILABLE:
             raise RuntimeError("Detoxify library is not installed. Install it with: pip install detoxify")
         if not self._model_loaded:
             try:
-                self.model = Detoxify(self.model_name)
+                if self.use_ensemble:
+                    # Load multiple models for ensemble
+                    model_variants = ['original', 'multilingual', 'unbiased']
+                    for variant in model_variants:
+                        try:
+                            self.models[variant] = Detoxify(variant)
+                            print(f"Loaded Detoxify model: {variant}")
+                        except Exception as e:
+                            print(f"Warning: Failed to load {variant} model: {e}")
+                    
+                    if not self.models:
+                        # Fallback to single model if ensemble fails
+                        print("Ensemble loading failed, falling back to single model")
+                        self.model = Detoxify(self.model_name)
+                        self.use_ensemble = False
+                    else:
+                        print(f"Successfully loaded {len(self.models)} models for ensemble")
+                else:
+                    self.model = Detoxify(self.model_name)
+                
                 self._model_loaded = True
             except Exception as e:
                 raise RuntimeError(f"Failed to load Detoxify model '{self.model_name}': {e}")
@@ -64,8 +86,29 @@ class ToxicityDetector:
             self._load_model()
 
         try:
-            # Get predictions from Detoxify
-            predictions = self.model.predict(text)
+            if self.use_ensemble and self.models:
+                # Ensemble prediction: average predictions from multiple models
+                all_predictions = []
+                for model_name, model in self.models.items():
+                    try:
+                        preds = model.predict(text)
+                        all_predictions.append(preds)
+                    except Exception as e:
+                        print(f"Warning: Prediction failed for {model_name}: {e}")
+                
+                # Average the predictions
+                if all_predictions:
+                    averaged_predictions = {}
+                    for key in all_predictions[0].keys():
+                        values = [p[key] for p in all_predictions if key in p]
+                        averaged_predictions[key] = sum(values) / len(values) if values else 0.0
+                    predictions = averaged_predictions
+                else:
+                    # Fallback to single model
+                    predictions = self.model.predict(text) if self.model else {}
+            else:
+                # Single model prediction
+                predictions = self.model.predict(text)
 
             # Convert to our format and ensure all required categories exist
             toxicity_predictions = self._normalize_predictions(predictions)
@@ -185,27 +228,51 @@ class ToxicityDetector:
 
     def _calculate_overall_score(self, predictions: ToxicityPredictions) -> float:
         """
-        Calculate weighted overall toxicity score.
+        Calculate overall toxicity score using hybrid approach.
+        
+        Uses a combination of:
+        1. Weighted average of significant categories
+        2. Maximum score as a floor (don't underestimate clear toxicity)
 
         Args:
             predictions: Individual toxicity category predictions
 
         Returns:
-            Weighted overall score
+            Overall toxicity score between 0 and 1
         """
-        overall = 0.0
-        total_weight = 0.0
-
+        scores_with_weights = []
+        max_score = 0.0
+        
         for category, weight in TOXICITY_WEIGHTS.items():
             score = getattr(predictions, category)
-            overall += score * weight
-            total_weight += weight
-
-        return min(1.0, overall / total_weight) if total_weight > 0 else 0.0
+            max_score = max(max_score, score)
+            
+            # Only include categories with meaningful scores (>5%) in weighted average
+            # This prevents zero-weight categories from diluting the result
+            if score > 0.05:
+                scores_with_weights.append((score, weight))
+        
+        # Calculate weighted average of significant categories
+        if scores_with_weights:
+            weighted_sum = sum(score * weight for score, weight in scores_with_weights)
+            total_weight = sum(weight for _, weight in scores_with_weights)
+            weighted_avg = weighted_sum / total_weight
+        else:
+            weighted_avg = 0.0
+        
+        # Hybrid score: use the higher of weighted average or 80% of max score
+        # This ensures that if ANY category is very high, the overall reflects it
+        # But still respects the weighted average for balanced cases
+        max_based_score = max_score * 0.8
+        
+        # Take the maximum to ensure we don't underestimate clear toxicity
+        overall_score = max(weighted_avg, max_based_score)
+        
+        return min(1.0, overall_score)
 
     def _calculate_confidence(self, predictions: ToxicityPredictions) -> float:
         """
-        Calculate confidence score based on prediction variance.
+        Calculate confidence score based on prediction clarity.
 
         Args:
             predictions: Individual toxicity category predictions
@@ -222,7 +289,10 @@ class ToxicityDetector:
             predictions.identity_hate
         ]
 
-        # Higher confidence when predictions are more decisive (either high or low)
+        # Check if any major category is very high (clear toxicity)
+        max_score = max(scores)
+        high_confidence_categories = sum(1 for s in scores if s > 0.85)
+        
         if np is not None:
             variance = np.var(scores)
             mean_score = np.mean(scores)
@@ -231,16 +301,34 @@ class ToxicityDetector:
             mean_score = sum(scores) / len(scores)
             variance = sum((x - mean_score) ** 2 for x in scores) / len(scores)
 
-        # Adjust confidence based on how clear-cut the predictions are
-        if mean_score < 0.1:
-            # Very low scores - high confidence in non-toxicity
+        # HIGH CONFIDENCE CASES
+        # If multiple categories are very high, it's clearly toxic regardless of variance
+        if high_confidence_categories >= 2:
             return 0.9
-        elif mean_score > 0.8:
-            # Very high scores - high confidence in toxicity
-            return 0.8 + (0.2 * (1 - variance))
-        else:
-            # Mid-range scores - lower confidence
-            return max(0.3, 0.7 - variance)
+        
+        # If any single category is extremely high (>95%), high confidence
+        if max_score > 0.95:
+            return 0.85
+        
+        # If all scores are very low, high confidence in non-toxicity
+        if mean_score < 0.1 and max_score < 0.15:
+            return 0.9
+        
+        # If mean is very high with low variance, high confidence
+        if mean_score > 0.8:
+            return 0.8 + (0.2 * (1 - min(variance, 1.0)))
+        
+        # MODERATE CONFIDENCE CASES
+        # If mean is low but one category is somewhat high, moderate confidence
+        if mean_score < 0.4 and max_score > 0.6:
+            return 0.7
+        
+        # Mid-range scores with high variance = lower confidence
+        if variance > 0.1:
+            return max(0.5, 0.7 - variance)
+        
+        # Default: moderate confidence
+        return 0.6
 
     def get_model_info(self) -> Dict[str, any]:
         """
