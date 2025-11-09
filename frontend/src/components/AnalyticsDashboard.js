@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { moderationService } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Activity, Users, AlertTriangle, Shield, Loader2, RefreshCw } from 'lucide-react';
+import { Activity, Users, AlertTriangle, Shield, Loader2, RefreshCw, RotateCcw } from 'lucide-react';
 
-const AnalyticsDashboard = () => {
+const AnalyticsDashboard = ({ darkMode }) => {
   const [analytics, setAnalytics] = useState(null);
   const [modelPerformance, setModelPerformance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +25,23 @@ const AnalyticsDashboard = () => {
       setError(err.message);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const resetAnalytics = async () => {
+    if (!window.confirm('Are you sure you want to reset all analytics data? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setRefreshing(true);
+      await moderationService.resetAnalytics();
+      await fetchAnalytics(); // Refresh data after reset
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setRefreshing(false);
     }
   };
@@ -59,16 +76,34 @@ const AnalyticsDashboard = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <Activity className="w-6 h-6 text-blue-600" />
-          <h2 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
+          <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Analytics Dashboard</h2>
         </div>
-        <button
-          onClick={fetchAnalytics}
-          disabled={refreshing}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={resetAnalytics}
+            disabled={refreshing}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+              darkMode
+                ? 'bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white'
+                : 'bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white'
+            }`}
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Reset</span>
+          </button>
+          <button
+            onClick={fetchAnalytics}
+            disabled={refreshing}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+              darkMode
+                ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white'
+            }`}
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {error && (

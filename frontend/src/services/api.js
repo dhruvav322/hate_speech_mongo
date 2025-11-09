@@ -82,6 +82,32 @@ export const moderationService = {
       throw new Error(error.response?.data?.detail || 'Health check failed');
     }
   },
+
+  // Instagram Analysis
+  async analyzeInstagramPost(instagramUrl, maxComments = 50, includeReplies = false) {
+    try {
+      const response = await api.post('/api/v1/instagram/analyze', {
+        instagram_url: instagramUrl,
+        max_comments: maxComments,
+        include_replies: includeReplies
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Instagram analysis failed:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.detail || 'Instagram analysis failed');
+    }
+  },
+
+  // Reset Analytics
+  async resetAnalytics() {
+    try {
+      const response = await api.post('/api/v1/analytics/reset');
+      return response.data;
+    } catch (error) {
+      console.error('Analytics reset failed:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.detail || 'Analytics reset failed');
+    }
+  },
 };
 
 export default api;

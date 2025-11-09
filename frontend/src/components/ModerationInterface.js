@@ -1,15 +1,26 @@
 import React, { useState } from 'react';
 import { moderationService } from '../services/api';
-import { Shield, AlertTriangle, CheckCircle, XCircle, Send, Loader2 } from 'lucide-react';
+import { Shield, AlertTriangle, CheckCircle, XCircle, Send, Loader2, Download, FileText, List } from 'lucide-react';
 
-const ModerationInterface = () => {
+const ModerationInterface = ({ onAnalysisComplete, darkMode }) => {
   const [text, setText] = useState('');
   const [userId, setUserId] = useState('user_' + Math.random().toString(36).substr(2, 9));
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [analysisMode, setAnalysisMode] = useState('single'); // 'single' or 'bulk'
+  const [bulkTexts, setBulkTexts] = useState('');
+  const [bulkResults, setBulkResults] = useState([]);
 
   const analyzeText = async () => {
+    if (analysisMode === 'single') {
+      return analyzeSingleText();
+    } else {
+      return analyzeBulkTexts();
+    }
+  };
+
+  const analyzeSingleText = async () => {
     if (!text.trim()) {
       setError('Please enter text to analyze');
       return;
@@ -22,6 +33,44 @@ const ModerationInterface = () => {
     try {
       const analysisResult = await moderationService.analyzeText(text, userId);
       setResult(analysisResult);
+      if (onAnalysisComplete) onAnalysisComplete(analysisResult);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const analyzeBulkTexts = async () => {
+    if (!bulkTexts.trim()) {
+      setError('Please enter texts to analyze (one per line)');
+      return;
+    }
+
+    const textLines = bulkTexts.split('\n').filter(line => line.trim().length > 0);
+    if (textLines.length === 0) {
+      setError('No valid texts found');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setBulkResults([]);
+
+    try {
+      const results = [];
+      for (let i = 0; i < textLines.length; i++) {
+        const textLine = textLines[i].trim();
+        if (textLine) {
+          const analysisResult = await moderationService.analyzeText(textLine, userId);
+          results.push({
+            text: textLine,
+            result: analysisResult,
+            index: i + 1
+          });
+        }
+      }
+      setBulkResults(results);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -43,22 +92,76 @@ const ModerationInterface = () => {
   };
 
   const getActionColor = (action) => {
-    switch (action) {
-      case 'allow':
-        return 'bg-green-50 border-green-200 text-green-800';
-      case 'flag':
-        return 'bg-yellow-50 border-yellow-200 text-yellow-800';
-      case 'block':
-        return 'bg-red-50 border-red-200 text-red-800';
-      default:
-        return 'bg-gray-50 border-gray-200 text-gray-800';
+    if (darkMode) {
+      switch (action) {
+        case 'allow':
+          return 'bg-green-900 border-green-700 text-green-300';
+        case 'flag':
+          return 'bg-yellow-900 border-yellow-700 text-yellow-300';
+        case 'block':
+          return 'bg-red-900 border-red-700 text-red-300';
+        default:
+          return 'bg-gray-800 border-gray-600 text-gray-300';
+      }
+    } else {
+      switch (action) {
+        case 'allow':
+          return 'bg-green-50 border-green-200 text-green-800';
+        case 'flag':
+          return 'bg-yellow-50 border-yellow-200 text-yellow-800';
+        case 'block':
+          return 'bg-red-50 border-red-200 text-red-800';
+        default:
+          return 'bg-gray-50 border-gray-200 text-gray-800';
+      }
     }
   };
 
   const getToxicityColor = (score) => {
-    if (score < 0.3) return 'text-green-600';
-    if (score < 0.7) return 'text-yellow-600';
-    return 'text-red-600';
+    if (score < 0.3) return darkMode ? 'text-green-400' : 'text-green-600';
+    if (score < 0.7) return darkMode ? 'text-yellow-400' : 'text-yellow-600';
+    return darkMode ? 'text-red-400' : 'text-red-600';
+  };
+
+  const exportResults = (format = 'json') => {
+    let data, filename, mimeType;
+    
+    if (analysisMode === 'single' && result) {
+      data = result;
+      filename = `hate-speech-analysis-${new Date().toISOString().split('T')[0]}.${format}`;
+    } else if (analysisMode === 'bulk' && bulkResults.length > 0) {
+      data = bulkResults;
+      filename = `bulk-hate-speech-analysis-${new Date().toISOString().split('T')[0]}.${format}`;
+    } else {
+      setError('No results to export');
+      return;
+    }
+
+    if (format === 'json') {
+      mimeType = 'application/json';
+      data = JSON.stringify(data, null, 2);
+    } else if (format === 'csv') {
+      mimeType = 'text/csv';
+      if (analysisMode === 'single') {
+        data = `Text,Toxicity Score,Recommended Action,Confidence,Model Used\n"${result.analysis.text || text}",${result.analysis.toxicity_score},${result.recommended_action},${result.analysis.confidence},${result.analysis.model_used}`;
+      } else {
+        const headers = 'Index,Text,Toxicity Score,Recommended Action,Confidence,Model Used\n';
+        const rows = bulkResults.map(item => 
+          `${item.index},"${item.text}",${item.result.analysis.toxicity_score},${item.result.recommended_action},${item.result.analysis.confidence},${item.result.analysis.model_used}`
+        ).join('\n');
+        data = headers + rows;
+      }
+    }
+
+    const blob = new Blob([data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -66,14 +169,22 @@ const ModerationInterface = () => {
       {/* Header */}
       <div className="text-center space-y-2">
         <div className="flex items-center justify-center space-x-2">
-          <Shield className="w-8 h-8 text-blue-600" />
-          <h1 className="text-3xl font-bold text-gray-900">Hate Speech Moderation</h1>
+          <Shield className="w-8 h-8 text-blue-500" />
+          <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Hate Speech Moderation
+          </h1>
         </div>
-        <p className="text-gray-600">AI-powered content moderation with industry-grade accuracy</p>
+        <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          Enhanced rule-based content moderation with weighted keyword detection
+        </p>
       </div>
 
       {/* Input Section */}
-      <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+      <div className={`rounded-lg p-6 space-y-4 transition-colors duration-300 ${
+        darkMode 
+          ? 'bg-gray-800 border border-gray-700' 
+          : 'bg-white shadow-md'
+      }`}>
         <div>
           <label htmlFor="userId" className="block text-sm font-medium text-gray-700 mb-1">
             User ID (optional)

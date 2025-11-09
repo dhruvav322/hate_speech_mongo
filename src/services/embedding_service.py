@@ -3,9 +3,20 @@
 import time
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+try:
+    import numpy as np
+    from sentence_transformers import SentenceTransformer
+    from sklearn.metrics.pairwise import cosine_similarity
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    # Create a mock numpy for basic functionality
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    SentenceTransformer = None
+    cosine_similarity = None
 
 from src.config.settings import settings
 from src.models.moderation import ContextEmbedding
@@ -28,6 +39,8 @@ class EmbeddingService:
 
     def _load_model(self) -> None:
         """Load the sentence transformer model if not already loaded."""
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            raise RuntimeError("Sentence transformers library is not installed. Install it with: pip install sentence-transformers")
         if not self._model_loaded:
             try:
                 self.model = SentenceTransformer(self.model_name)

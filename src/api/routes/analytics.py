@@ -397,7 +397,7 @@ async def get_system_health(db=Depends(get_database)):
 
 @router.get("/export")
 async def export_analytics_data(
-    format: str = Query(default="json", regex="^(json|csv)$"),
+    format: str = Query(default="json", pattern="^(json|csv)$"),
     days: int = Query(default=30, ge=1, le=365, description="Number of days to export"),
     db=Depends(get_database)
 ):

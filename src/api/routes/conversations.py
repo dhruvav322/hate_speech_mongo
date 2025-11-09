@@ -8,9 +8,9 @@ from src.config.database import get_database, COLLECTIONS
 from src.models.conversation import (
     Conversation, ConversationCreate, ConversationUpdate,
     ConversationContext, ConversationListResponse,
-    ConversationSearchFilters, ModerationLevel, ConversationStatus
+    ConversationSearchFilters, ModerationLevel, ConversationStatus,
+    MessageSummary
 )
-from src.models.message import MessageSummary
 from src.services.embedding_service import embedding_service
 
 router = APIRouter()

@@ -21,7 +21,7 @@ class ModerationLog(BaseModel):
     processing_time_ms: int
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class ModerationMetrics(BaseModel):
@@ -52,7 +52,7 @@ class FeedbackAppeal(BaseModel):
     reviewed_at: Optional[datetime] = None
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class ModeratorReview(BaseModel):
@@ -67,7 +67,7 @@ class ModeratorReview(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class AnalyticsOverview(BaseModel):
@@ -136,7 +136,7 @@ class ContextEmbedding(BaseModel):
     context_type: str
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class LearningUpdate(BaseModel):
@@ -149,4 +149,4 @@ class LearningUpdate(BaseModel):
     applied: bool = False
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True

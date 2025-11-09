@@ -3,8 +3,17 @@
 import time
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
-from detoxify import Detoxify
+try:
+    import numpy as np
+    from detoxify import Detoxify
+    DETOXIFY_AVAILABLE = True
+except ImportError:
+    DETOXIFY_AVAILABLE = False
+    # Create a mock numpy for basic functionality
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
 
 from src.config.settings import settings, TOXICITY_WEIGHTS
 from src.models.message import ToxicityAnalysis, ToxicityPredictions
@@ -26,6 +35,8 @@ class ToxicityDetector:
 
     def _load_model(self) -> None:
         """Load the Detoxify model if not already loaded."""
+        if not DETOXIFY_AVAILABLE:
+            raise RuntimeError("Detoxify library is not installed. Install it with: pip install detoxify")
         if not self._model_loaded:
             try:
                 self.model = Detoxify(self.model_name)
@@ -212,8 +223,13 @@ class ToxicityDetector:
         ]
 
         # Higher confidence when predictions are more decisive (either high or low)
-        variance = np.var(scores)
-        mean_score = np.mean(scores)
+        if np is not None:
+            variance = np.var(scores)
+            mean_score = np.mean(scores)
+        else:
+            # Fallback calculation without numpy
+            mean_score = sum(scores) / len(scores)
+            variance = sum((x - mean_score) ** 2 for x in scores) / len(scores)
 
         # Adjust confidence based on how clear-cut the predictions are
         if mean_score < 0.1:

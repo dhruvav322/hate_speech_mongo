@@ -47,9 +47,10 @@ Built with FastAPI, advanced ML models (Detoxify, Hugging Face, Sentence Transfo
    curl http://localhost:8000/api/v1/health
    ```
 
-4. **Access enhanced API documentation**
-   - Swagger UI: http://localhost:8000/docs
-   - ReDoc: http://localhost:8000/redoc
+4. **Access the application**
+   - **React Frontend**: http://localhost:3000 (Primary Interface)
+   - **API Documentation**: http://localhost:8000/docs
+   - **ReDoc**: http://localhost:8000/redoc
 
 ### Local Development with Advanced ML
 
@@ -63,6 +64,36 @@ Built with FastAPI, advanced ML models (Detoxify, Hugging Face, Sentence Transfo
    export USE_ADVANCED_MODELS=true
    python main.py
    ```
+
+3. **Start the React Frontend**
+   ```bash
+   cd frontend
+   npm install
+   npm start
+   ```
+
+## 🎨 React Frontend Interface
+
+The primary user interface is a professional React application with the following features:
+
+### ✨ **Key Features**
+- **🎯 Real-time Text Analysis** - Instant hate speech detection with visual feedback
+- **📊 Analytics Dashboard** - Beautiful charts and performance metrics  
+- **🔄 MLOps Feedback Loop** - Submit feedback to improve model accuracy
+- **📱 Responsive Design** - Works perfectly on desktop and mobile
+- **🔐 Secure API Integration** - Seamless connection to the backend API
+
+### 🌐 **Access Points**
+- **Main Interface**: http://localhost:3000
+- **Moderation Tab**: Real-time text analysis and results
+- **Analytics Tab**: Performance metrics and usage statistics
+- **Feedback Tab**: Submit corrections for model improvement
+
+### 🎮 **How to Use**
+1. **Text Analysis**: Enter text in the moderation interface and click "Analyze"
+2. **View Results**: See toxicity scores, confidence levels, and recommended actions
+3. **Submit Feedback**: Help improve the model by correcting any mistakes
+4. **Monitor Performance**: Check analytics for usage patterns and model performance
 
 ## 📚 Enhanced API Usage
 

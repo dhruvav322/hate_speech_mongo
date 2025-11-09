@@ -105,7 +105,7 @@ class Message(MessageBase):
     feedback: Feedback = Field(default_factory=Feedback)
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
@@ -144,7 +144,7 @@ class ModerationResponse(BaseModel):
 class BatchModerationRequest(BaseModel):
     """Request model for batch message moderation."""
     messages: List[MessageCreate] = Field(..., min_items=1, max_items=100)
-    priority: str = Field(default="normal", regex="^(low|normal|high)$")
+    priority: str = Field(default="normal", pattern="^(low|normal|high)$")
 
 
 class BatchModerationResponse(BaseModel):

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ModerationInterface from './components/ModerationInterface';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import FeedbackForm from './components/FeedbackForm';
 import { moderationService } from './services/api';
-import { Shield, BarChart3, MessageSquare, Activity, Settings, Info } from 'lucide-react';
+import { Shield, BarChart3, MessageSquare, Activity, Settings, Info, Moon, Sun } from 'lucide-react';
 
 function App() {
   const [activeTab, setActiveTab] = useState('moderation');
@@ -11,6 +11,25 @@ function App() {
   const [userId] = useState('user_' + Math.random().toString(36).substr(2, 9));
   const [apiStatus, setApiStatus] = useState('unknown');
   const [showInfo, setShowInfo] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : true; // Default to dark mode
+  });
+
+  // Dark mode persistence
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  // Toggle dark mode
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
 
   // Check API status on mount
   React.useEffect(() => {
@@ -31,12 +50,7 @@ function App() {
 
   const handleAnalysisComplete = (result) => {
     setAnalysisResult(result);
-    // Auto-switch to feedback tab after successful analysis
-    if (result) {
-      setTimeout(() => {
-        setActiveTab('feedback');
-      }, 1000);
-    }
+    // Keep user on current tab to view results
   };
 
   const handleFeedbackSubmitted = () => {
@@ -50,9 +64,9 @@ function App() {
   const tabs = [
     {
       id: 'moderation',
-      name: 'Moderation',
+      name: 'Text Analysis',
       icon: Shield,
-      component: <ModerationInterface onAnalysisComplete={handleAnalysisComplete} />
+      component: <ModerationInterface onAnalysisComplete={handleAnalysisComplete} darkMode={darkMode} />
     },
     {
       id: 'feedback',
@@ -63,6 +77,7 @@ function App() {
           analysisResult={analysisResult}
           userId={userId}
           onFeedbackSubmitted={handleFeedbackSubmitted}
+          darkMode={darkMode}
         />
       )
     },
@@ -70,22 +85,34 @@ function App() {
       id: 'analytics',
       name: 'Analytics',
       icon: BarChart3,
-      component: <AnalyticsDashboard />
+      component: <AnalyticsDashboard darkMode={darkMode} />
     }
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className={`min-h-screen transition-colors duration-300 ${
+      darkMode 
+        ? 'bg-gray-900' 
+        : 'bg-gray-50'
+    }`}>
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className={`border-b transition-colors duration-300 ${
+        darkMode 
+          ? 'bg-black border-gray-800' 
+          : 'bg-white border-gray-200'
+      }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo and Title */}
             <div className="flex items-center space-x-3">
               <Shield className="w-8 h-8 text-blue-600" />
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Hate Speech Moderation</h1>
-                <p className="text-xs text-gray-500">Industry-Grade Content Analysis</p>
+                <h1 className={`text-xl font-bold transition-colors duration-200 ${
+                  darkMode ? 'text-white' : 'text-gray-900'
+                }`}>Hate Speech Moderation</h1>
+                <p className={`text-xs transition-colors duration-200 ${
+                  darkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>Industry-Grade Content Analysis</p>
               </div>
             </div>
 
@@ -107,9 +134,25 @@ function App() {
 
               <button
                 onClick={() => setShowInfo(!showInfo)}
-                className="p-2 text-gray-500 hover:text-gray-700 transition-colors"
+                className={`p-2 transition-colors ${
+                  darkMode 
+                    ? 'text-gray-400 hover:text-gray-200' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
               >
                 <Info className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={toggleDarkMode}
+                className={`p-2 transition-colors ${
+                  darkMode 
+                    ? 'text-gray-400 hover:text-gray-200' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              >
+                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
             </div>
           </div>
@@ -118,16 +161,26 @@ function App() {
 
       {/* Info Banner */}
       {showInfo && (
-        <div className="bg-blue-50 border-b border-blue-200">
+        <div className={`border-b transition-colors duration-300 ${
+          darkMode 
+            ? 'bg-gray-800 border-gray-700' 
+            : 'bg-gray-100 border-gray-200'
+        }`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-blue-800">
-                <strong>🛡️ Industry-Ready Features:</strong> API Key Authentication • MLOps Feedback Loop •
-                Background Processing • Real-time Analytics • Production Performance
+              <div className={`text-sm ${
+                darkMode ? 'text-gray-300' : 'text-gray-700'
+              }`}>
+                <strong>🛡️ Detection Method:</strong> Ensemble ML Models (Detoxify + Semantic Analysis) • 
+                <strong>🌐 Browser Extension:</strong> Available for universal platform analysis (Instagram, Twitter, YouTube, etc.)
               </div>
               <button
                 onClick={() => setShowInfo(false)}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                className={`text-sm font-medium transition-colors ${
+                  darkMode 
+                    ? 'text-gray-400 hover:text-gray-200' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
               >
                 Dismiss
               </button>
@@ -137,7 +190,9 @@ function App() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="bg-white shadow-sm">
+      <div className={`transition-colors duration-300 ${
+        darkMode ? 'bg-black' : 'bg-white'
+      }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-8">
             {tabs.map((tab) => {
@@ -148,8 +203,12 @@ function App() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? darkMode 
+                        ? 'border-blue-400 text-blue-400'
+                        : 'border-blue-600 text-blue-600'
+                      : darkMode
+                        ? 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -169,25 +228,37 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-auto">
+      <footer className={`border-t mt-auto transition-colors duration-300 ${
+        darkMode 
+          ? 'bg-black border-gray-800' 
+          : 'bg-white border-gray-200'
+      }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between text-sm text-gray-500">
+          <div className={`flex items-center justify-between text-sm ${
+            darkMode ? 'text-gray-400' : 'text-gray-500'
+          }`}>
             <div>
-              🛡️ Industry-Ready Hate Speech Moderation v2.0 |
-              Model: Rule-based with optional ML support
+              🛡️ Hate Speech Moderation v2.0 | 
+              <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
+                Enhanced Rule-based Detection
+              </span>
             </div>
             <div className="flex items-center space-x-4">
               <a
                 href="http://localhost:8000/docs"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800"
+                className={`transition-colors ${
+                  darkMode 
+                    ? 'text-blue-400 hover:text-blue-300' 
+                    : 'text-blue-600 hover:text-blue-800'
+                }`}
               >
-                API Documentation
+                API Docs
               </a>
               <span>•</span>
               <span className="text-xs">
-                API Key: industry-demo-key-12345
+                Key: industry-demo-key-12345
               </span>
             </div>
           </div>

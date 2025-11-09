@@ -234,7 +234,7 @@ async def submit_moderator_review(
 
 @router.get("/appeals")
 async def get_appeals(
-    status: Optional[str] = Query(None, regex="^(pending|approved|rejected)$"),
+    status: Optional[str] = Query(None, pattern="^(pending|approved|rejected)$"),
     reviewer_id: Optional[str] = Query(None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),

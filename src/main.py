@@ -2,12 +2,6 @@
 
 import uvicorn
 from contextlib import asynccontextmanager
-<<<<<<< HEAD
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
-import os
-=======
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,20 +13,9 @@ from src.services.embedding_service import embedding_service
 from src.services.moderation_service import moderation_service
 from src.api.routes import moderation, users, conversations, analytics, feedback
 
->>>>>>> compyle/hate-speech-mitigation-agent
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
-<<<<<<< HEAD
-    print("🚀 Hate Speech Moderation System starting...")
-    yield
-    print("📴 Application shutdown")
-
-app = FastAPI(
-    title="Hate Speech Moderation API",
-    description="Adaptive hate speech moderation system with context-aware scoring",
-=======
     # Startup
     try:
         # Initialize database connection
@@ -41,17 +24,23 @@ app = FastAPI(
         # Create database indexes
         await create_indexes()
 
-        # Pre-load ML models
-        await toxicity_detector.health_check()
-        await embedding_service.health_check()
+        # Pre-load ML models (optional - will fail gracefully if not installed)
+        try:
+            await toxicity_detector.health_check()
+        except Exception as e:
+            print(f"Warning: Toxicity detector not available: {e}")
+        try:
+            await embedding_service.health_check()
+        except Exception as e:
+            print(f"Warning: Embedding service not available: {e}")
 
-        print("🚀 Hate Speech Moderation System started successfully")
-        print(f"📊 Database: {settings.mongodb_db_name}")
-        print(f"🧠 Toxicity Model: {settings.detoxify_model}")
-        print(f"🔤 Embedding Model: {settings.sentence_transformer_model}")
+        print("Hate Speech Moderation System started successfully")
+        print(f"Database: {settings.mongodb_db_name}")
+        print(f"Toxicity Model: {settings.detoxify_model}")
+        print(f"Embedding Model: {settings.sentence_transformer_model}")
 
     except Exception as e:
-        print(f"❌ Failed to start application: {e}")
+        print(f"Failed to start application: {e}")
         raise
 
     yield
@@ -59,39 +48,29 @@ app = FastAPI(
     # Shutdown
     try:
         await db_manager.disconnect_async()
-        print("📴 Application shutdown complete")
+        print("Application shutdown complete")
     except Exception as e:
-        print(f"❌ Error during shutdown: {e}")
+        print(f"Error during shutdown: {e}")
 
 
 # Create FastAPI application
 app = FastAPI(
     title="Hate Speech Moderation API",
     description="Adaptive hate speech moderation system with context-aware scoring and user behavior learning",
->>>>>>> compyle/hate-speech-mitigation-agent
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
 )
 
-<<<<<<< HEAD
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-=======
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure this properly in production
->>>>>>> compyle/hate-speech-mitigation-agent
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-<<<<<<< HEAD
-=======
 
 # Include routers
 app.include_router(
@@ -125,7 +104,6 @@ app.include_router(
 )
 
 
->>>>>>> compyle/hate-speech-mitigation-agent
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -135,49 +113,6 @@ async def root():
         "status": "operational",
         "docs": "/docs"
     }
-
-<<<<<<< HEAD
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat()
-    }
-
-@app.post("/api/v1/moderation/analyze")
-async def analyze_message(request: dict):
-    """Simple message analysis endpoint."""
-    text = request.get("text", "")
-    toxic_words = ["hate", "stupid", "ugly", "kill"]
-    toxicity_score = sum(1 for word in toxic_words if word.lower() in text.lower()) / max(len(text.split()), 1)
-    toxicity_score = min(toxicity_score, 1.0)
-
-    if toxicity_score < 0.3:
-        action = "none"
-    elif toxicity_score < 0.6:
-        action = "warn"
-    elif toxicity_score < 0.8:
-        action = "hide"
-    else:
-        action = "delete"
-
-    return {
-        "message_id": f"msg_{int(datetime.utcnow().timestamp())}",
-        "overall_score": toxicity_score,
-        "moderation_action": {
-            "recommended_action": action,
-            "confidence": 0.85,
-            "reason": f"Analysis complete - action: {action}"
-        },
-        "processing_time_ms": 45,
-        "timestamp": datetime.utcnow().isoformat()
-    }
-
-if __name__ == "__main__":
-    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
-=======
 
 @app.get("/health")
 async def health_check():
@@ -247,4 +182,3 @@ if __name__ == "__main__":
         reload=True,
         log_level=settings.log_level.lower()
     )
->>>>>>> compyle/hate-speech-mitigation-agent

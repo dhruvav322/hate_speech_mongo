@@ -15,6 +15,8 @@ from src.models.message import (
 from src.models.moderation import ModerationLog
 from src.services.moderation_service import moderation_service
 from src.services.user_service import user_service
+from src.services.toxicity_detector import toxicity_detector
+from src.services.embedding_service import embedding_service
 from src.models.user import UserBehaviorUpdate
 
 router = APIRouter()
@@ -297,14 +299,14 @@ async def get_models_status(db=Depends(get_database)):
         Status information for all ML models
     """
     try:
-        toxicity_health = await moderation_service._models_loaded
-        if not toxicity_health:
+        # Ensure models are loaded
+        if not moderation_service._models_loaded:
             # Trigger health check to load models
             await moderation_service.health_check()
 
         return {
-            "toxicity_detector": await moderation_service._ensure_models_loaded(),
-            "embedding_service": await embedding_service.health_check(),
+            "toxicity_detector": toxicity_detector.get_model_info(),
+            "embedding_service": embedding_service.get_model_info(),
             "models_loaded": moderation_service._models_loaded,
             "last_updated": datetime.utcnow().isoformat()
         }

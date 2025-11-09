@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Hate Speech Detector",
+  "version": "1.0.0",
+  "description": "AI-powered hate speech detection for any website. Analyze comments, posts, and messages in real-time.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Hate Speech Detector"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.instagram.com/*",
+        "https://twitter.com/*",
+        "https://x.com/*",
+        "https://www.youtube.com/*",
+        "https://www.facebook.com/*",
+        "https://www.reddit.com/*",
+        "https://www.tiktok.com/*",
+        "https://discord.com/*",
+        "https://www.linkedin.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.html", "content.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
