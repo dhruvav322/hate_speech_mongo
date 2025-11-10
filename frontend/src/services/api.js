@@ -24,13 +24,13 @@ export const moderationService = {
       });
       const raw = response.data || {};
 
-      // Map backend response (original format) to UI-expected shape
-      const recommendedAction = raw?.moderation_action?.action || 'allow';
+      // Map backend response to UI-expected shape
+      const recommendedAction = raw?.moderation_action?.recommended_action || 'allow';
       const confidence = raw?.moderation_action?.confidence ?? 0;
-      const toxicityScore = raw?.overall_score ?? 0;
-      const categories = raw?.toxicity_scores || {};
-      const modelUsed = 'ensemble (3 models)';
-      const processingTime = raw?.processing_time_ms || 0;
+      const toxicityScore = raw?.analysis?.toxicity_score ?? 0;
+      const categories = raw?.analysis?.toxicity_scores || {};
+      const modelUsed = raw?.model_info?.model_type || 'ensemble';
+      const processingTime = raw?.analysis?.processing_time_ms || 0;
 
       return {
         message_id: raw.message_id || '',
@@ -43,8 +43,8 @@ export const moderationService = {
           text: text,
           processing_time_ms: processingTime,
         },
-        reasoning: `${raw?.moderation_action?.reason || 'Ensemble analysis'} (${processingTime}ms)`,
-        timestamp: raw?.timestamp || new Date().toISOString(),
+        reasoning: `Analysis complete using ${modelUsed} model (${processingTime.toFixed(0)}ms)`,
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       console.error('Analysis failed:', error.response?.data || error.message);
@@ -125,7 +125,7 @@ export const moderationService = {
   // Health check
   async healthCheck() {
     try {
-      const response = await api.get('/health');
+      const response = await api.get('/api/v1/health');
       return response.data;
     } catch (error) {
       console.error('Health check failed:', error.response?.data || error.message);
