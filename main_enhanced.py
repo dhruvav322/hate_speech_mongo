@@ -254,6 +254,18 @@ class ToxicityModel:
     def __init__(self):
         self.start_time = time.time()
         self.using_advanced_models = ADVANCED_MODELS_AVAILABLE and config.USE_ADVANCED_MODELS
+        
+        # Performance tracking
+        self.total_predictions = 0
+        self.total_processing_time = 0.0
+        self.model_usage = {}
+        self.models = {}
+        
+        # Initialize with fallback model
+        self.models["fallback"] = {
+            "predictions": 0,
+            "total_time": 0.0
+        }
 
     async def load_model(self):
         """Load the ML model(s)."""
@@ -267,44 +279,84 @@ class ToxicityModel:
         else:
             logger.info("Advanced models disabled or not available, using fallback predictions")
 
+    async def _update_model_stats(self, model_name: str, processing_time: float):
+        """Update statistics for the given model."""
+        self.total_predictions += 1
+        self.total_processing_time += processing_time
+        
+        if model_name not in self.model_usage:
+            self.model_usage[model_name] = 0
+        self.model_usage[model_name] += 1
+        
+        if model_name in self.models:
+            self.models[model_name]["predictions"] += 1
+            self.models[model_name]["total_time"] += processing_time
+        else:
+            self.models[model_name] = {
+                "predictions": 1,
+                "total_time": processing_time
+            }
+    
     async def predict_toxicity(self, text: str) -> Dict[str, float]:
         """Predict toxicity scores using advanced models or fallback."""
         start_time = time.time()
+        model_used = "fallback"
+        
+        try:
+            if self.using_advanced_models:
+                result = await self._advanced_prediction(text, start_time)
+                model_used = "advanced_ensemble"
+            else:
+                result = await self._fallback_prediction(text, start_time)
+                model_used = "fallback"
+                
+            # Update statistics
+            processing_time = time.time() - start_time
+            await self._update_model_stats(model_used, processing_time)
+            return result
+            
+        except Exception as e:
+            logger.error(f"Prediction failed: {e}")
+            # Update statistics for failed prediction
+            processing_time = time.time() - start_time
+            await self._update_model_stats("error", processing_time)
+            return await self._fallback_prediction(text, start_time)
 
-        if self.using_advanced_models:
-            try:
-                # Use advanced ensemble prediction
-                result = await advanced_models.predict_toxicity_ensemble(text)
+    async def _advanced_prediction(self, text: str, start_time: float) -> Dict[str, float]:
+        """Predict toxicity scores using advanced models."""
+        try:
+            # Use advanced ensemble prediction
+            result = await advanced_models.predict_toxicity_ensemble(text)
 
-                # Convert to standard format
-                toxicity_scores = {}
-                for pred in result.individual_predictions:
-                    for category, score in pred.raw_scores.items():
-                        if isinstance(score, (int, float)):
-                            toxicity_scores[category] = score
+            # Convert to standard format
+            toxicity_scores = {}
+            for pred in result.individual_predictions:
+                for category, score in pred.raw_scores.items():
+                    if isinstance(score, (int, float)):
+                        toxicity_scores[category] = score
 
-                # Ensure we have standard toxicity categories
-                standard_categories = ['toxicity', 'severe_toxicity', 'obscene', 'identity_attack', 'insult', 'threat']
-                for cat in standard_categories:
-                    if cat not in toxicity_scores:
-                        toxicity_scores[cat] = result.final_score
+            # Ensure we have standard toxicity categories
+            standard_categories = ['toxicity', 'severe_toxicity', 'obscene', 'identity_attack', 'insult', 'threat']
+            for cat in standard_categories:
+                if cat not in toxicity_scores:
+                    toxicity_scores[cat] = result.final_score
 
-                processing_time = (time.time() - start_time) * 1000
+            processing_time = (time.time() - start_time) * 1000
 
-                return {
-                    'toxicity_scores': toxicity_scores,
-                    'overall_score': result.final_score,
-                    'processing_time_ms': processing_time,
-                    'ensemble_info': {
-                        'model_count': result.model_count,
-                        'confidence': result.confidence,
-                        'consensus': result.consensus,
-                        'individual_models': [p.model_name for p in result.individual_predictions]
-                    }
+            return {
+                'toxicity_scores': toxicity_scores,
+                'overall_score': result.final_score,
+                'processing_time_ms': processing_time,
+                'ensemble_info': {
+                    'model_count': result.model_count,
+                    'confidence': result.confidence,
+                    'consensus': result.consensus,
+                    'individual_models': [p.model_name for p in result.individual_predictions]
                 }
-            except Exception as e:
-                logger.error(f"Advanced prediction failed: {e}")
-                # Fall back to simple prediction
+            }
+        except Exception as e:
+            logger.error(f"Advanced prediction failed: {e}")
+            # Fall back to simple prediction
 
         # Fallback predictions
         return await self._fallback_prediction(text, start_time)
@@ -610,26 +662,69 @@ async def get_analytics(api_key: str = Depends(get_api_key)):
 
 @app.get("/api/v1/model-performance", response_model=ModelPerformanceResponse)
 async def get_model_performance(api_key: str = Depends(get_api_key)):
-    """Get detailed ML model performance statistics."""
+    """Get detailed ML model performance statistics.
+    
+    Returns performance metrics for the ML models including:
+    - Number of models loaded
+    - Total predictions made
+    - Average prediction time
+    - System uptime
+    - Cache statistics
+    - Model usage statistics
+    """
     try:
-        if ADVANCED_MODELS_AVAILABLE and config.USE_ADVANCED_MODELS:
-            stats = advanced_models.get_performance_stats()
-            return ModelPerformanceResponse(**stats)
-        else:
+        # Get basic performance metrics
+        uptime_hours = (time.time() - toxicity_model.start_time) / 3600
+        
+        # If we have advanced models and they're enabled
+        if hasattr(toxicity_model, 'models') and toxicity_model.using_advanced_models:
+            model_count = len(toxicity_model.models) if hasattr(toxicity_model, 'models') else 0
+            available_models = list(toxicity_model.models.keys()) if hasattr(toxicity_model, 'models') else []
+            
+            # Get prediction stats if available
+            total_predictions = getattr(toxicity_model, 'total_predictions', 0)
+            total_processing_time = getattr(toxicity_model, 'total_processing_time', 0.0)
+            avg_prediction_time = (total_processing_time / total_predictions * 1000) if total_predictions > 0 else 0.0
+            
             return ModelPerformanceResponse(
-                models_loaded=0,
-                total_predictions=0,
+                models_loaded=model_count,
+                total_predictions=total_predictions,
+                average_prediction_time_ms=round(avg_prediction_time, 2),
+                uptime_hours=round(uptime_hours, 2),
+                cache_hit_rate_percent=0.0,  # Can be implemented if using caching
+                cache_size=0,                # Can be implemented if using caching
+                model_usage=getattr(toxicity_model, 'model_usage', {}),
+                available_models=available_models,
+                ml_libraries_available=True
+            )
+        else:
+            # Fallback for when advanced models aren't available
+            return ModelPerformanceResponse(
+                models_loaded=1,  # At least the fallback model is loaded
+                total_predictions=getattr(toxicity_model, 'total_predictions', 0),
                 average_prediction_time_ms=0.0,
-                uptime_hours=(time.time() - toxicity_model.start_time) / 3600,
+                uptime_hours=round(uptime_hours, 2),
                 cache_hit_rate_percent=0.0,
                 cache_size=0,
-                model_usage={},
-                available_models=[],
+                model_usage={"fallback": getattr(toxicity_model, 'total_predictions', 0)},
+                available_models=["fallback"],
                 ml_libraries_available=False
             )
+            
     except Exception as e:
-        logger.error(f"Model performance stats failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Model performance stats failed: {e}", exc_info=True)
+        # Return a minimal response instead of failing completely
+        return ModelPerformanceResponse(
+            models_loaded=0,
+            total_predictions=0,
+            average_prediction_time_ms=0.0,
+            uptime_hours=0.0,
+            cache_hit_rate_percent=0.0,
+            cache_size=0,
+            model_usage={},
+            available_models=[],
+            ml_libraries_available=False
+        )
 
 @app.get("/api/v1/health")
 async def health_check():
