@@ -48,6 +48,14 @@ coverage.xml
 *.cover
 *.py.cover
 .hypothesis/
+
+# Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Environment files
+.env
+*.env
 .pytest_cache/
 cover/
 
