@@ -28,15 +28,19 @@ class HateSpeechDetector {
     detectPlatform() {
         if (!this.currentTab) return;
 
-        const url = this.currentTab.url;
+        const url = this.currentTab.url || '';
         const platformInfo = this.getPlatformInfo(url);
-        
+
         document.getElementById('platformIcon').textContent = platformInfo.icon;
         document.getElementById('platformName').textContent = platformInfo.name;
-        document.getElementById('platformUrl').textContent = this.truncateUrl(url);
+        document.getElementById('platformUrl').textContent = url ? this.truncateUrl(url) : 'Unsupported page';
     }
 
     getPlatformInfo(url) {
+        if (!url || typeof url !== 'string') {
+            return { name: 'Unknown Platform', icon: '🌐' };
+        }
+
         const platforms = {
             'instagram.com': { name: 'Instagram', icon: '📷' },
             'twitter.com': { name: 'Twitter', icon: '🐦' },
