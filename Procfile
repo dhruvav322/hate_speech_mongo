@@ -1,1 +1,0 @@
-web: gunicorn -w 4 -k uvicorn.workers.UvicornWorker main_enhanced:app --timeout 300
