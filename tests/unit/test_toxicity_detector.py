@@ -12,7 +12,12 @@ class TestToxicityDetector:
 
     @pytest.fixture
     def detector(self):
-        """Create a toxicity detector instance."""
+        """
+        Provide a new ToxicityDetector instance for use in tests.
+        
+        Returns:
+            ToxicityDetector: A fresh, uninitialized ToxicityDetector instance.
+        """
         return ToxicityDetector()
 
     @pytest.fixture

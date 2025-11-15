@@ -12,12 +12,22 @@ class TestEmbeddingService:
 
     @pytest.fixture
     def service(self):
-        """Create an embedding service instance."""
+        """
+        Create a new EmbeddingService instance.
+        
+        Returns:
+            EmbeddingService: A fresh EmbeddingService instance with default configuration.
+        """
         return EmbeddingService()
 
     @pytest.fixture
     def mock_embedding(self):
-        """Mock embedding vector."""
+        """
+        Provide a 384-dimensional mock embedding vector.
+        
+        Returns:
+            embedding (list[float]): A list of 384 floats (dtype float32) with values in [0, 1).
+        """
         return np.random.rand(384).astype(np.float32).tolist()
 
     @pytest.mark.unit
@@ -366,7 +376,14 @@ class TestEmbeddingService:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_health_check_failure(self, service):
-        """Test health check failure."""
+        """
+        Verifies that health_check reports an unhealthy status when embedding generation fails.
+        
+        Patches the service's generate_embedding to raise an exception and asserts the returned health report has status "unhealthy" and includes the keys "error", "model_loaded", and "model_name".
+        
+        Parameters:
+            service (EmbeddingService): Test fixture providing an EmbeddingService instance.
+        """
         with patch.object(service, 'generate_embedding') as mock_generate:
             mock_generate.side_effect = Exception("Health check failed")
 
