@@ -29,11 +29,19 @@ class HateSpeechDetector {
         if (!this.currentTab) return;
 
         const url = this.currentTab.url || '';
+
+        if (!url) {
+            document.getElementById('platformIcon').textContent = '🌐';
+            document.getElementById('platformName').textContent = 'Unknown Platform';
+            document.getElementById('platformUrl').textContent = 'Unsupported page';
+            return;
+        }
+
         const platformInfo = this.getPlatformInfo(url);
 
         document.getElementById('platformIcon').textContent = platformInfo.icon;
         document.getElementById('platformName').textContent = platformInfo.name;
-        document.getElementById('platformUrl').textContent = url ? this.truncateUrl(url) : 'Unsupported page';
+        document.getElementById('platformUrl').textContent = this.truncateUrl(url);
     }
 
     getPlatformInfo(url) {
