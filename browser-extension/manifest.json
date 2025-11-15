@@ -5,7 +5,6 @@
   "description": "AI-powered hate speech detection for any website. Analyze comments, posts, and messages in real-time.",
   "permissions": [
     "activeTab",
-    "tabs",
     "storage",
     "scripting"
   ],

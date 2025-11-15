@@ -52,18 +52,6 @@ class TextExtractor {
                 texts.push(...this.extractGenericText());
         }
 
-        // Fallback to full page text if no content detected
-        if (texts.length === 0) {
-            const fallback = (document.body?.innerText || '').trim();
-            if (fallback.length > 0) {
-                const fallbackSegments = fallback
-                    .split(/\n+/)
-                    .map(segment => segment.trim())
-                    .filter(segment => segment.length >= 5 && segment.split(' ').length >= 2);
-                texts.push(...fallbackSegments.slice(0, 50));
-            }
-        }
-
         // Filter and clean texts
         return this.filterTexts(texts);
     }
@@ -323,7 +311,7 @@ class TextExtractor {
         // Remove duplicates and filter by quality
         const uniqueTexts = [...new Set(texts)];
         
-        const filtered = uniqueTexts.filter(text => {
+        return uniqueTexts.filter(text => {
             // Filter criteria
             if (!text || text.length < 5) return false; // Too short
             if (text.length > 1000) return false; // Too long
@@ -331,11 +319,7 @@ class TextExtractor {
             if (text.split(' ').length < 2) return false; // Single word
             
             return true;
-        });
-
-        const chosen = filtered.length > 0 ? filtered : uniqueTexts;
-        
-        return chosen.slice(0, 50); // Limit to 50 texts for performance
+        }).slice(0, 50); // Limit to 50 texts for performance
     }
 
     enableSelectionMode() {
