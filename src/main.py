@@ -1,10 +1,12 @@
 """Main FastAPI application for hate speech moderation system."""
 
 import uvicorn
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from src.config.settings import settings
 from src.config.database import db_manager, create_indexes
@@ -12,6 +14,16 @@ from src.services.toxicity_detector import toxicity_detector
 from src.services.embedding_service import embedding_service
 from src.services.moderation_service import moderation_service
 from src.api.routes import moderation, users, conversations, analytics, feedback
+from src.api.middleware.auth import api_key_manager, is_public_endpoint
+from src.api.middleware.rate_limit import limiter, rate_limit_exceeded_handler
+from src.api.middleware.security_headers import SecurityHeadersMiddleware
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper()),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,13 +46,20 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"Warning: Embedding service not available: {e}")
 
-        print("Hate Speech Moderation System started successfully")
-        print(f"Database: {settings.mongodb_db_name}")
-        print(f"Toxicity Model: {settings.detoxify_model}")
-        print(f"Embedding Model: {settings.sentence_transformer_model}")
+        logger.info("="*60)
+        logger.info("🛡️  Hate Speech Moderation System Started")
+        logger.info("="*60)
+        logger.info(f"Environment: {settings.environment}")
+        logger.info(f"Database: {settings.mongodb_db_name}")
+        logger.info(f"Toxicity Model: {settings.detoxify_model}")
+        logger.info(f"Embedding Model: {settings.sentence_transformer_model}")
+        logger.info(f"API Authentication: ✅ Enabled")
+        logger.info(f"Rate Limiting: ✅ Enabled")
+        logger.info(f"CORS Origins: {settings.allowed_origins}")
+        logger.info("="*60)
 
     except Exception as e:
-        print(f"Failed to start application: {e}")
+        logger.error(f"Failed to start application: {e}")
         raise
 
     yield
@@ -48,9 +67,9 @@ async def lifespan(app: FastAPI):
     # Shutdown
     try:
         await db_manager.disconnect_async()
-        print("Application shutdown complete")
+        logger.info("Application shutdown complete")
     except Exception as e:
-        print(f"Error during shutdown: {e}")
+        logger.error(f"Error during shutdown: {e}")
 
 
 # Create FastAPI application
@@ -63,14 +82,62 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Add Security Headers Middleware (first)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Add CORS middleware (configured securely)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly in production
+    allow_origins=settings.get_allowed_origins_list(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
+    max_age=3600,
 )
+
+# Add Rate Limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Request Size Limit Middleware
+@app.middleware("http")
+async def limit_upload_size(request: Request, call_next):
+    """Limit request body size"""
+    if request.method in ["POST", "PUT", "PATCH"]:
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > settings.max_request_size:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"Request body too large. Maximum size: {settings.max_request_size} bytes"}
+            )
+    return await call_next(request)
+
+# API Key Authentication Middleware
+@app.middleware("http")
+async def enforce_api_key(request: Request, call_next):
+    """Enforce API key on all non-public endpoints"""
+    
+    # Skip public endpoints
+    if is_public_endpoint(request.url.path):
+        return await call_next(request)
+    
+    # Skip OPTIONS requests (CORS preflight)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    
+    # Verify API key
+    api_key = request.headers.get("X-API-Key")
+    if not api_key or not api_key_manager.verify_key(api_key):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": "Invalid or missing API key. Include X-API-Key header.",
+                "docs": "/docs"
+            }
+        )
+    
+    response = await call_next(request)
+    return response
 
 # Include routers
 app.include_router(

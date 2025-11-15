@@ -1,14 +1,17 @@
 """Configuration management for the hate speech moderation system."""
 
 import os
-from typing import Optional
+from typing import Optional, List
 
-from pydantic import Field
+from pydantic import Field, validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     """Application settings."""
+
+    # Environment
+    environment: str = Field(default="development", env="ENVIRONMENT")
 
     # Database
     mongodb_url: str = Field(default="mongodb://localhost:27017", env="MONGODB_URL")
@@ -19,6 +22,45 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, env="API_PORT")
     api_secret_key: str = Field(default="your-secret-key-here", env="API_SECRET_KEY")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
+    
+    # API Key Authentication (REQUIRED in production)
+    api_key: str = Field(..., env="API_KEY")
+    additional_api_keys: Optional[str] = Field(None, env="ADDITIONAL_API_KEYS")
+    
+    # CORS Configuration
+    allowed_origins: str = Field(
+        default="http://localhost:3000",
+        env="ALLOWED_ORIGINS"
+    )
+    
+    @validator('api_key')
+    def validate_api_key(cls, v, values):
+        """Ensure API key is secure in production"""
+        environment = values.get('environment', 'development')
+        
+        if not v:
+            raise ValueError("API_KEY is required")
+        
+        # Prevent weak keys in production
+        if environment == "production":
+            if v in ["your-secret-key-here", "industry-demo-key-12345", "test-key"]:
+                raise ValueError("Default/demo API key not allowed in production!")
+            
+            if len(v) < 32:
+                raise ValueError("Production API key must be at least 32 characters")
+        
+        return v
+    
+    @validator('allowed_origins', pre=True)
+    def parse_origins(cls, v):
+        """Parse comma-separated origins"""
+        if isinstance(v, str):
+            return v
+        return ",".join(v) if isinstance(v, list) else v
+    
+    def get_allowed_origins_list(self) -> List[str]:
+        """Get CORS origins as a list"""
+        return [origin.strip() for origin in self.allowed_origins.split(',')]
 
     # Model Configuration
     detoxify_model: str = Field(default="original", env="DETOXIFY_MODEL")
@@ -38,6 +80,9 @@ class Settings(BaseSettings):
     # Performance
     max_concurrent_requests: int = Field(default=100, env="MAX_CONCURRENT_REQUESTS")
     redis_url: Optional[str] = Field(default=None, env="REDIS_URL")
+    
+    # Request Limits
+    max_request_size: int = Field(default=1_000_000, env="MAX_REQUEST_SIZE")  # 1MB
 
     class Config:
         env_file = ".env"

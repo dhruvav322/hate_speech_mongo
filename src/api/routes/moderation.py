@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 
 from src.config.database import get_database
@@ -18,12 +18,16 @@ from src.services.user_service import user_service
 from src.services.toxicity_detector import toxicity_detector
 from src.services.embedding_service import embedding_service
 from src.models.user import UserBehaviorUpdate
+from src.api.middleware.rate_limit import limiter
+from src.api.middleware.sanitization import InputSanitizer
 
 router = APIRouter()
 
 
 @router.post("/analyze", response_model=ModerationResponse)
+@limiter.limit("10/minute")  # Rate limit: 10 requests per minute
 async def analyze_message(
+    http_request: Request,  # Required for rate limiting
     request: ModerationRequest,
     background_tasks: BackgroundTasks,
     db=Depends(get_database)
@@ -37,7 +41,10 @@ async def analyze_message(
     - User behavior adaptation
     - Adaptive threshold calculation
 
+    Rate Limit: 10 requests per minute per API key
+    
     Args:
+        http_request: HTTP request (for rate limiting)
         request: Message analysis request
         background_tasks: FastAPI background tasks
         db: Database connection
@@ -46,6 +53,13 @@ async def analyze_message(
         Detailed moderation analysis with recommendations
     """
     try:
+        # Sanitize input
+        request.text = InputSanitizer.sanitize_text(request.text)
+        if request.user_id:
+            request.user_id = InputSanitizer.sanitize_identifier(request.user_id, "user_id")
+        if request.conversation_id:
+            request.conversation_id = InputSanitizer.sanitize_identifier(request.conversation_id, "conversation_id")
+        
         # Perform analysis
         response = await moderation_service.analyze_message(request)
 
@@ -71,7 +85,9 @@ async def analyze_message(
 
 
 @router.post("/batch", response_model=BatchModerationResponse)
+@limiter.limit("2/minute")  # Stricter rate limit for batch: 2 requests per minute
 async def analyze_batch(
+    http_request: Request,  # Required for rate limiting
     request: BatchModerationRequest,
     background_tasks: BackgroundTasks,
     db=Depends(get_database)
@@ -82,7 +98,11 @@ async def analyze_batch(
     This endpoint processes multiple messages simultaneously,
     providing better performance for bulk operations.
 
+    Rate Limit: 2 requests per minute per API key
+    Max Batch Size: 100 messages
+
     Args:
+        http_request: HTTP request (for rate limiting)
         request: Batch analysis request
         background_tasks: FastAPI background tasks
         db: Database connection
@@ -96,6 +116,14 @@ async def analyze_batch(
                 status_code=400,
                 detail="Batch size cannot exceed 100 messages"
             )
+        
+        # Sanitize all messages in batch
+        for msg in request.messages:
+            msg.content = InputSanitizer.sanitize_text(msg.content)
+            if msg.user_id:
+                msg.user_id = InputSanitizer.sanitize_identifier(msg.user_id, "user_id")
+            if msg.conversation_id:
+                msg.conversation_id = InputSanitizer.sanitize_identifier(msg.conversation_id, "conversation_id")
 
         # Convert to moderation requests
         moderation_requests = []
@@ -148,14 +176,19 @@ async def analyze_batch(
 
 
 @router.get("/statistics")
+@limiter.limit("20/minute")  # Rate limit: 20 requests per minute
 async def get_moderation_statistics(
+    http_request: Request,  # Required for rate limiting
     days: int = 7,
     db=Depends(get_database)
 ):
     """
     Get moderation statistics for the specified period.
 
+    Rate Limit: 20 requests per minute per API key
+
     Args:
+        http_request: HTTP request (for rate limiting)
         days: Number of days to look back (default: 7)
         db: Database connection
 
