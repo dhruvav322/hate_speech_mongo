@@ -309,17 +309,15 @@ class TestEmbeddingService:
             }
         ]
 
-        with patch.object(service, 'calculate_similarity') as mock_similarity:
-            mock_similarity.return_value = 0.1  # Below threshold
+        result = await service.find_similar_messages(
+            query_embedding,
+            message_embeddings,
+            threshold=0.7
+        )
 
-            result = await service.find_similar_messages(
-                query_embedding,
-                message_embeddings,
-                threshold=0.7
-            )
-
-            assert isinstance(result, list)
-            assert len(result) == 0
+        assert isinstance(result, list)
+        # Zero vector should have low similarity with random embedding
+        assert len(result) == 0
 
     @pytest.mark.unit
     @pytest.mark.asyncio
