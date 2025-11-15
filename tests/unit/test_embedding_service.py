@@ -202,7 +202,7 @@ class TestEmbeddingService:
         embedding1 = mock_embedding
         embedding2 = None
 
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, AttributeError, ValueError)):
             await service.calculate_similarity(embedding1, embedding2)
 
     @pytest.mark.unit
