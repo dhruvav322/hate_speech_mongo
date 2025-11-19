@@ -1,55 +1,39 @@
+# ============================================
+# Development Docker Compose Configuration
+# ============================================
+# Use this for local development with hot reload
+
 version: '3.8'
 
 services:
-  app:
-    build:
-      target: development
-    ports:
-      - "8000:8000"
-    environment:
-      - MONGODB_URL=mongodb://mongo:27017
-      - REDIS_URL=redis://redis:6379
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - LOG_LEVEL=DEBUG
-      - RELOAD=true
-    depends_on:
-      - mongo
-      - redis
-    volumes:
-      - ./src:/app/src
-      - ./tests:/app/tests
-    restart: unless-stopped
-    networks:
-      - hate-speech-network
-
-  mongo:
+  mongodb:
     image: mongo:7.0
+    container_name: hate_speech_mongodb_dev
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
-      - mongo_dev_data:/data/db
-      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - mongodb_dev_data:/data/db
     environment:
-      - MONGO_INITDB_DATABASE=hate_speech_mitigation
-    restart: unless-stopped
+      MONGO_INITDB_DATABASE: hate_speech_mitigation
     networks:
-      - hate-speech-network
+      - hate_speech_dev_network
 
   redis:
-    image: redis:7.2-alpine
+    image: redis:7-alpine
+    container_name: hate_speech_redis_dev
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redis_dev_data:/data
-    restart: unless-stopped
     networks:
-      - hate-speech-network
+      - hate_speech_dev_network
 
 volumes:
-  mongo_dev_data:
+  mongodb_dev_data:
   redis_dev_data:
 
 networks:
-  hate-speech-network:
+  hate_speech_dev_network:
     driver: bridge

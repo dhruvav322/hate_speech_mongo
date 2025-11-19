@@ -4,8 +4,9 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request, Query
 from fastapi.responses import JSONResponse
+from starlette.requests import Request as StarletteRequest
 
 from src.config.database import get_database
 from src.models.message import (
@@ -27,8 +28,8 @@ router = APIRouter()
 @router.post("/analyze", response_model=ModerationResponse)
 @limiter.limit("10/minute")  # Rate limit: 10 requests per minute
 async def analyze_message(
-    http_request: Request,  # Required for rate limiting
-    request: ModerationRequest,
+    request: StarletteRequest,  # Required for rate limiting - slowapi expects 'request'
+    body: ModerationRequest,  # Renamed from 'request' to avoid conflict
     background_tasks: BackgroundTasks,
     db=Depends(get_database)
 ):
@@ -54,27 +55,27 @@ async def analyze_message(
     """
     try:
         # Sanitize input
-        request.text = InputSanitizer.sanitize_text(request.text)
-        if request.user_id:
-            request.user_id = InputSanitizer.sanitize_identifier(request.user_id, "user_id")
-        if request.conversation_id:
-            request.conversation_id = InputSanitizer.sanitize_identifier(request.conversation_id, "conversation_id")
+        body.text = InputSanitizer.sanitize_text(body.text)
+        if body.user_id:
+            body.user_id = InputSanitizer.sanitize_identifier(body.user_id, "user_id")
+        if body.conversation_id:
+            body.conversation_id = InputSanitizer.sanitize_identifier(body.conversation_id, "conversation_id")
         
         # Perform analysis
-        response = await moderation_service.analyze_message(request)
+        response = await moderation_service.analyze_message(body)
 
         # Update user behavior in background
-        if request.user_id:
+        if body.user_id:
             background_tasks.add_task(
                 update_user_behavior_async,
-                request.user_id,
+                body.user_id,
                 response
             )
 
         # Store message and analysis in background
         background_tasks.add_task(
             store_message_async,
-            request,
+            body,
             response
         )
 
@@ -178,8 +179,9 @@ async def analyze_batch(
 @router.get("/statistics")
 @limiter.limit("20/minute")  # Rate limit: 20 requests per minute
 async def get_moderation_statistics(
-    http_request: Request,  # Required for rate limiting
-    days: int = 7,
+    request: Request,  # Required for rate limiting
+    days: int = Query(default=7, ge=1, le=365),
+    limit: int = Query(default=10, ge=1, le=100),
     db=Depends(get_database)
 ):
     """
@@ -188,12 +190,13 @@ async def get_moderation_statistics(
     Rate Limit: 20 requests per minute per API key
 
     Args:
-        http_request: HTTP request (for rate limiting)
+        request: HTTP request (for rate limiting)
         days: Number of days to look back (default: 7)
+        limit: Number of recent events to return (default: 10)
         db: Database connection
 
     Returns:
-        Moderation statistics and analytics
+        Moderation statistics and analytics with recent events
     """
     try:
         if days < 1 or days > 365:
@@ -203,6 +206,32 @@ async def get_moderation_statistics(
             )
 
         stats = await moderation_service.get_moderation_statistics(days)
+        
+        # Get recent events
+        from src.config.database import COLLECTIONS
+        from datetime import datetime, timedelta
+        
+        messages_collection = db[COLLECTIONS["messages"]]
+        cutoff_date = datetime.utcnow() - timedelta(days=1)
+        
+        recent_messages = await messages_collection.find(
+            {"timestamp": {"$gte": cutoff_date}},
+            sort=[("timestamp", -1)],
+            limit=limit
+        ).to_list(limit)
+        
+        recent_events = []
+        for msg in recent_messages:
+            recent_events.append({
+                "message_id": msg.get("message_id", ""),
+                "content": msg.get("content", "")[:100],  # Truncate for display
+                "user_id": msg.get("user_id", ""),
+                "score": msg.get("toxicity_analysis", {}).get("overall_score", 0.0),
+                "action": msg.get("moderation_action", {}).get("action", "none"),
+                "timestamp": msg.get("timestamp", datetime.utcnow()).isoformat() if isinstance(msg.get("timestamp"), datetime) else str(msg.get("timestamp", ""))
+            })
+        
+        stats["recent_events"] = recent_events
         return stats
 
     except Exception as e:
@@ -354,14 +383,25 @@ async def update_user_behavior_async(user_id: str, response: ModerationResponse)
     try:
         from src.services.user_service import user_service
         from src.models.user import UserBehaviorUpdate
+        from src.services.queue_service import queue_service
 
-        behavior_update = UserBehaviorUpdate(
-            message_toxicity_score=response.overall_score,
-            moderation_action_taken=response.moderation_action.action.value,
-            was_false_positive=False  # Would be determined from feedback
-        )
-
-        await user_service.update_user_behavior(user_id, behavior_update)
+        # Use queue service if available, otherwise execute directly
+        if queue_service.use_redis:
+            await queue_service.enqueue(
+                "user_updates",
+                "update_user_behavior",
+                user_id,
+                response.overall_score,
+                response.moderation_action.action.value
+            )
+        else:
+            # Direct execution (fallback)
+            behavior_update = UserBehaviorUpdate(
+                message_toxicity_score=response.overall_score,
+                moderation_action_taken=response.moderation_action.action.value,
+                was_false_positive=False
+            )
+            await user_service.update_user_behavior(user_id, behavior_update)
     except Exception as e:
         # Log error but don't fail the main process
         print(f"Error updating user behavior: {e}")
@@ -371,27 +411,38 @@ async def store_message_async(request: ModerationRequest, response: ModerationRe
     """Store message and analysis results in background."""
     try:
         from src.config.database import db_manager, COLLECTIONS
+        from src.services.queue_service import queue_service
 
-        # Create message document
-        message_doc = {
-            "message_id": response.message_id,
-            "conversation_id": request.conversation_id,
-            "user_id": request.user_id,
-            "content": request.text,
-            "timestamp": response.timestamp,
-            "toxicity_analysis": {
-                "overall_score": response.overall_score,
-                "predictions": response.toxicity_scores.dict(),
-                "confidence": response.moderation_action.confidence,
-                "processing_time_ms": response.processing_time_ms
-            },
-            "moderation_action": response.moderation_action.dict(),
-            "context": request.context.dict() if request.context else {}
-        }
-
-        # Store in database
-        messages_collection = db_manager.async_db[COLLECTIONS["messages"]]
-        await messages_collection.insert_one(message_doc)
+        # Use queue service if available, otherwise execute directly
+        if queue_service.use_redis:
+            await queue_service.enqueue(
+                "message_storage",
+                "store_message",
+                response.message_id,
+                request.conversation_id,
+                request.user_id,
+                request.text,
+                response.dict()
+            )
+        else:
+            # Direct execution (fallback)
+            message_doc = {
+                "message_id": response.message_id,
+                "conversation_id": request.conversation_id,
+                "user_id": request.user_id,
+                "content": request.text,
+                "timestamp": response.timestamp,
+                "toxicity_analysis": {
+                    "overall_score": response.overall_score,
+                    "predictions": response.toxicity_scores.dict(),
+                    "confidence": response.moderation_action.confidence,
+                    "processing_time_ms": response.processing_time_ms
+                },
+                "moderation_action": response.moderation_action.dict(),
+                "context": request.context.dict() if request.context else {}
+            }
+            messages_collection = db_manager.async_db[COLLECTIONS["messages"]]
+            await messages_collection.insert_one(message_doc)
 
     except Exception as e:
         # Log error but don't fail the main process

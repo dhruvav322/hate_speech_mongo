@@ -18,6 +18,7 @@ from src.models.user import RiskLevel, BehaviorProfile
 from src.models.moderation import ModerationLog
 from src.services.toxicity_detector import toxicity_detector
 from src.services.embedding_service import embedding_service
+from src.services.cache_service import cache_service
 
 
 class ModerationService:
@@ -62,15 +63,39 @@ class ModerationService:
             toxicity_analysis = await toxicity_detector.analyze_toxicity(request.text)
             base_score = toxicity_analysis.overall_score
 
-            # Step 2: Get context information
-            context_info = await self._get_context_analysis(
-                request.conversation_id,
-                request.user_id,
-                request.text
-            )
+            # Step 2: Get context information (with caching)
+            context_info = None
+            if request.conversation_id:
+                cached = await cache_service.get("context", request.conversation_id)
+                if cached:
+                    # Reconstruct from dict if cached
+                    from src.models.moderation import ContextAnalysis
+                    context_info = ContextAnalysis(**cached) if isinstance(cached, dict) else cached
+            
+            if not context_info:
+                context_info = await self._get_context_analysis(
+                    request.conversation_id,
+                    request.user_id,
+                    request.text
+                )
+                # Cache context for 10 minutes (store as dict)
+                if request.conversation_id and hasattr(context_info, 'dict'):
+                    await cache_service.set("context", context_info.dict(), ttl_seconds=600, *[request.conversation_id])
 
-            # Step 3: Get user behavior profile
-            user_profile = await self._get_user_profile(request.user_id)
+            # Step 3: Get user behavior profile (with caching)
+            user_profile = None
+            if request.user_id:
+                cached = await cache_service.get("user_profile", request.user_id)
+                if cached:
+                    # Reconstruct from dict if cached
+                    from src.models.user import BehaviorProfile
+                    user_profile = BehaviorProfile(**cached) if isinstance(cached, dict) else cached
+            
+            if not user_profile:
+                user_profile = await self._get_user_profile(request.user_id)
+                # Cache user profile for 5 minutes (store as dict)
+                if request.user_id and hasattr(user_profile, 'dict'):
+                    await cache_service.set("user_profile", user_profile.dict(), ttl_seconds=300, *[request.user_id])
 
             # Step 4: Calculate adaptive threshold
             adjusted_threshold = self._calculate_adaptive_threshold(

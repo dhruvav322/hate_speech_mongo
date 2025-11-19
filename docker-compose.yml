@@ -1,62 +1,70 @@
+# ============================================
+# Hate Speech Moderation System - Docker Compose
+# ============================================
+# Main production-ready configuration
+# For development, use: docker-compose -f docker-compose.dev.yml up
+# For scalable production, use: docker-compose -f docker-compose.scalable.yml up
+
 version: '3.8'
 
 services:
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      # SECURITY: Load from .env file, not hardcoded
-      - API_KEY=${API_KEY:?API_KEY is required}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      
-      # Database
-      - MONGODB_URL=mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}@mongo:27017/hate_speech_db?authSource=admin
-      
-      # CORS
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
-      
-      # Performance
-      - BACKGROUND_PROCESSING=${BACKGROUND_PROCESSING:-true}
-      - MAX_REQUESTS_PER_MINUTE=${MAX_REQUESTS_PER_MINUTE:-60}
-      
-      # ML Models
-      - DETOXIFY_MODEL=${DETOXIFY_MODEL:-multilingual}
-    depends_on:
-      mongo:
-        condition: service_healthy
-    volumes:
-      - ./logs:/app/logs
+  mongodb:
+    image: mongo:7.0
+    container_name: hate_speech_mongodb
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: hate_speech_mitigation
+    networks:
+      - hate_speech_network
 
-  mongo:
-    image: mongo:6.0
-    environment:
-      # SECURITY: MongoDB authentication
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required}
-      MONGO_INITDB_DATABASE: hate_speech_db
-    ports:
-      # SECURITY: Only bind to localhost
-      - "127.0.0.1:27017:27017"
-    volumes:
-      - mongo_data:/data/db
-      - ./scripts/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-    command: ["mongod", "--auth"]
+  redis:
+    image: redis:7-alpine
+    container_name: hate_speech_redis
     restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hate_speech_network
+    command: redis-server --appendonly yes
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hate_speech_api
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=hate_speech_mitigation
+      - REDIS_URL=redis://redis:6379/0
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+      - ENVIRONMENT=production
+      - API_KEY=${API_KEY:-your-secure-api-key-here}
+      - ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - hate_speech_network
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
 
 volumes:
-  mongo_data:
+  mongodb_data:
+  redis_data:
+
+networks:
+  hate_speech_network:
+    driver: bridge

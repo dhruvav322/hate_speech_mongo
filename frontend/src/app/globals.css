@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  --foreground-rgb: 0, 255, 157; /* Matrix Green default text */
+}
+
+body {
+  color: #a1a1aa; /* Zinc 400 for body text */
+  background: #050505;
+}
+
+/* The Cyber Grid Background */
+.bg-grid {
+  background-size: 40px 40px;
+  background-image: linear-gradient(to right, #18181b 1px, transparent 1px),
+    linear-gradient(to bottom, #18181b 1px, transparent 1px);
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border: 1px solid #00ff9d;
+}
+
+/* Utilities */
+.text-shadow-glow {
+  text-shadow: 0 0 10px rgba(0, 255, 157, 0.5);
+}
+
+.text-shadow-danger {
+  text-shadow: 0 0 10px rgba(255, 0, 85, 0.5);
+}

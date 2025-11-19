@@ -13,6 +13,8 @@ from src.config.database import db_manager, create_indexes
 from src.services.toxicity_detector import toxicity_detector
 from src.services.embedding_service import embedding_service
 from src.services.moderation_service import moderation_service
+from src.services.cache_service import cache_service
+from src.services.queue_service import queue_service
 from src.api.routes import moderation, users, conversations, analytics, feedback
 from src.api.middleware.auth import api_key_manager, is_public_endpoint
 from src.api.middleware.rate_limit import limiter, rate_limit_exceeded_handler
@@ -35,6 +37,12 @@ async def lifespan(app: FastAPI):
 
         # Create database indexes
         await create_indexes()
+
+        # Initialize cache service (Redis or in-memory fallback)
+        await cache_service.connect()
+
+        # Initialize queue service (Redis or in-memory fallback)
+        await queue_service.connect()
 
         # Pre-load ML models (optional - will fail gracefully if not installed)
         try:
@@ -66,6 +74,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     try:
+        await cache_service.disconnect()
+        await queue_service.disconnect()
         await db_manager.disconnect_async()
         logger.info("Application shutdown complete")
     except Exception as e:
@@ -86,9 +96,14 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Add CORS middleware (configured securely)
+# Allow localhost:3000 for Next.js frontend
+cors_origins = settings.get_allowed_origins_list()
+if "http://localhost:3000" not in cors_origins:
+    cors_origins.append("http://localhost:3000")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.get_allowed_origins_list(),
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-API-Key", "Authorization"],
@@ -98,6 +113,35 @@ app.add_middleware(
 # Add Rate Limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Global exception handler to ensure CORS headers on all errors
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Ensure CORS headers are included in HTTPException responses"""
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+    # Add CORS headers
+    response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, Authorization"
+    return response
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Ensure CORS headers are included in all exception responses"""
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+    # Add CORS headers
+    response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, Authorization"
+    return response
 
 # Request Size Limit Middleware
 @app.middleware("http")
@@ -137,6 +181,10 @@ async def enforce_api_key(request: Request, call_next):
         )
     
     response = await call_next(request)
+    # Ensure CORS headers are present in all responses
+    if "Access-Control-Allow-Origin" not in response.headers:
+        response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
 
 # Include routers
@@ -201,7 +249,8 @@ async def health_check():
         }
 
     except Exception as e:
-        return JSONResponse(
+        # Return error response with CORS headers
+        response = JSONResponse(
             status_code=503,
             content={
                 "status": "unhealthy",
@@ -209,6 +258,10 @@ async def health_check():
                 "version": "1.0.0"
             }
         )
+        # Ensure CORS headers are added
+        response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
 
 
 @app.get("/api/v1/models/info")

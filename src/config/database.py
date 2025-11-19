@@ -20,9 +20,18 @@ class MongoDBManager:
         self._sync_db: Database = None
 
     async def connect_async(self) -> None:
-        """Initialize async MongoDB connection."""
+        """Initialize async MongoDB connection with connection pooling."""
         if self._async_client is None:
-            self._async_client = AsyncIOMotorClient(settings.mongodb_url)
+            # Configure connection pool for optimal performance
+            self._async_client = AsyncIOMotorClient(
+                settings.mongodb_url,
+                maxPoolSize=100,  # Maximum connections in pool
+                minPoolSize=10,   # Minimum connections to maintain
+                maxIdleTimeMS=45000,  # Close idle connections after 45s
+                serverSelectionTimeoutMS=5000,  # Timeout for server selection
+                connectTimeoutMS=10000,  # Connection timeout
+                socketTimeoutMS=20000,  # Socket operation timeout
+            )
             self._async_db = self._async_client[settings.mongodb_db_name]
             # Test connection
             await self._async_client.admin.command('ping')
@@ -115,10 +124,21 @@ async def create_indexes():
     await db[COLLECTIONS["messages"]].create_index("conversation_id")
     await db[COLLECTIONS["messages"]].create_index("user_id")
     await db[COLLECTIONS["messages"]].create_index("timestamp")
+    # Compound indexes for common query patterns
     await db[COLLECTIONS["messages"]].create_index([
         ("conversation_id", 1),
         ("timestamp", -1)
     ])
+    await db[COLLECTIONS["messages"]].create_index([
+        ("user_id", 1),
+        ("timestamp", -1)
+    ])
+    await db[COLLECTIONS["messages"]].create_index([
+        ("timestamp", -1),
+        ("toxicity_analysis.overall_score", -1)
+    ])
+    # Index for analytics queries
+    await db[COLLECTIONS["messages"]].create_index("toxicity_analysis.overall_score")
 
     # Context embeddings collection indexes
     await db[COLLECTIONS["context_embeddings"]].create_index("conversation_id")
@@ -128,6 +148,11 @@ async def create_indexes():
     await db[COLLECTIONS["moderation_logs"]].create_index("message_id")
     await db[COLLECTIONS["moderation_logs"]].create_index("user_id")
     await db[COLLECTIONS["moderation_logs"]].create_index("timestamp")
+    # Compound index for time-range queries
+    await db[COLLECTIONS["moderation_logs"]].create_index([
+        ("timestamp", -1),
+        ("user_id", 1)
+    ])
 
     # Feedback collection indexes
     await db[COLLECTIONS["feedback"]].create_index("message_id")

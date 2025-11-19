@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+.next/
+out/
+dist/
+
+# Environment
+.env
+.env.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docs (not needed in image)
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+.pytest_cache/
+coverage/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+*.temp
